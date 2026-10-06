@@ -73,7 +73,7 @@
 ┌──────────────────────── 브라우저 (사용자 컴퓨터) ────────────────────────┐
 │  app/page.tsx ─▶ components/Board (진행판 전체, 클라이언트)              │
 │     ├ TaskForm   ├ TaskCard(+StepList, StepProposal)   ├ SummaryPanel    │
-│     └ hooks/useBoard ──▶ lib/storage ──▶ localStorage ("task-board:v1")   │
+│     └ hooks/useBoard ──▶ lib/client/storage ──▶ localStorage ("task-board:v1")│
 │                     └──▶ lib/progress·status·summary (계산은 여기서만)    │
 └───────────────┬──────────────────────────────────────────┬──────────────┘
                 │ POST /api/steps                          │ POST /api/summary
@@ -100,13 +100,17 @@
 
 **② AI 단계 쪼개기 (must 1)**
 ```
-입력: [AI로 단계 나누기] 클릭 (업무명·마감일·메모 + 오늘 날짜)
+입력: [AI로 단계 나누기] 클릭 (업무명·마감일·메모 + 오늘 날짜) — 마감이 지난 업무는 버튼이 꺼져 있음
  → 브라우저: 요청 번호 발급, 요청 당시 업무 revision 기록 → POST /api/steps
- → 서버: 접근 코드 → 호출 제한 → 입력 검사 → 프롬프트(PRD 규칙 1~5) → AI(JSON 모드, 15초)
-        → JSON 검증 실패/시간 초과면 1회 재시도 → 그래도 실패면 오류 응답
+ → 서버: 접근 코드 → 입력 검사 → 호출 제한(여기서 1회 차감) → 프롬프트(PRD 규칙 1~5) → AI(JSON 모드, 15초)
+        → 시간 초과·네트워크·429·5xx·JSON 검증 실패면 1회 재시도 → 그래도 실패면 오류 응답(마지막 시도 원인)
  → 브라우저: 응답이 "마지막 요청"이고 revision이 같을 때만 제안 패널 표시
             (다르면 "제안을 적용하지 않았습니다" + [제안 보기]/[다시 요청], 업무가 지워졌으면 버림)
- → 출력: 제안 목록 → 사용자가 수정 → [저장]을 눌러야 할 일로 반영 (revision +1)
+            need_more_info면 질문 표시 → 메모 보충 → [다시 요청]
+ → 출력: 제안 목록 → 사용자가 수정 → [저장]
+          · 할 일이 없으면 그대로 반영
+          · 있으면 [뒤에 추가](50개 상한 확인) / [바꾸기](체크된 할 일이 있으면 한 번 더 확인)
+          · 반영 시 revision +1, 각 할 일에 source="ai", 사용자가 고친 할 일은 edited=true
 ```
 
 **③ AI 진행 요약 (must 2)**
@@ -114,12 +118,14 @@
 입력: [요약 만들기] 클릭
  → 브라우저: 업무마다 {업무명, 마감일, 전체 할 일 수, 완료 수}만 추려서 + 오늘 날짜 + 요청 당시 보드 revision 기록
             → POST /api/summary (메모·할 일 제목은 보내지 않음)
- → 서버: 접근 코드 → 호출 제한 → 입력 검사
-        → lib로 진행률·상태·순서를 직접 다시 계산 → "정답 사실표"와 기본 요약 생성
-        → 프롬프트(PRD 규칙 1~7 + 정답 사실표) → AI(15초)
-        → 형식 검사(5줄·60자) + 사실 검사(정답 사실표와 줄마다 대조) → 실패면 1회 재시도
-        → 그래도 실패면 { fallback: 기본 요약 } 응답
- → 브라우저: 마지막 요청의 응답만 표시. 그사이 보드 revision이 바뀌었으면 "바뀌었음" 표시 + [다시 요약], 복사 비활성
+ → 서버: 접근 코드 → 입력 검사 → (업무 0건이면 AI 없이 기본 요약 응답, 횟수 차감 없음)
+        → 호출 제한(여기서 1회 차감)
+        → lib로 진행률·상태·순서를 직접 다시 계산 → 기본 요약(정답) 생성
+        → 프롬프트(PRD 규칙 1~7 + 업무별 계산값) → AI(15초)
+        → 형식 검사(5줄·60자) + 사실 검사(기본 요약과 줄 단위 통째 비교) → 실패면 1회 재시도
+        → 그래도 실패면 { source: "fallback", lines: 기본 요약, reason } 응답 (AI 관련 실패 3종 모두)
+ → 브라우저: 마지막 요청의 응답만 표시. 그사이 보드 revision이나 날짜가 바뀌었으면 "바뀌었음" 표시 + [다시 요약], 복사 비활성
+            fallback이면 "AI 요약을 받지 못해 기본 요약을 보여줍니다" + [다시 시도]
  → 출력: 5줄 요약 + [복사]
 ```
 
@@ -128,9 +134,10 @@
 | 모듈 | 의존하는 것 | 목적 |
 |---|---|---|
 | `components/*` | `hooks/useBoard`, `lib/*` (서버 전용 제외) | 화면 표시 |
-| `hooks/useBoard` | `lib/storage`, `lib/types` | 저장·버전 관리 |
+| `hooks/useBoard` | `lib/client/storage`, `lib/types` | 저장·버전 관리 |
 | `app/api/*/route.ts` | `lib/server/*`, `lib/*` | 서버 창구 |
 | `lib/server/*` | `lib/*` | AI 호출·보호 장치 (화면에서 import 금지) |
+| `lib/client/*` | `lib/*` | 브라우저 전용(localStorage) — 서버·테스트에서 import 금지 |
 | `lib/*` (순수 함수) | 없음 (서로만 참조) | 규칙 계산 — 화면·서버·테스트 공용 |
 
 ---
@@ -143,9 +150,11 @@
 // 할 일 하나
 type Step = {
   id: string;          // crypto.randomUUID()
-  title: string;       // 30자 이내 권장 (직접 입력은 50자까지 허용)
-  dueDate?: string;    // 권장 완료일 "YYYY-MM-DD" (AI 제안 시)
+  title: string;       // 1~30자 (AI 제안은 "~하기" 필수, 직접 입력은 권장)
+  dueDate?: string;    // 권장 완료일 "YYYY-MM-DD" — AI 제안은 필수, 직접 입력은 선택. 오늘~업무 마감일(포함)
   done: boolean;       // 체크 여부
+  source: "ai" | "manual"; // 출처 — PRD 3장 "AI 제안 그대로 쓴 비율" 측정용
+  edited: boolean;     // AI 제안을 사용자가 고쳤는지
 };
 
 // 업무 하나
@@ -186,12 +195,18 @@ type TaskView = {
 | `isComplete(total, doneCount)` | `total ≥ 1 && doneCount === total` (퍼센트로 판정하지 않음) |
 | `calcStatus(total, doneCount, dueDate, today)` | 완료 → 지연(dDay < 0) → 임박(0 ≤ dDay ≤ 3) → 정상 |
 | `diffDays(dueDate, today)` | 두 "YYYY-MM-DD"를 날짜만으로 비교 (시각·시간대 무시) |
-| `pickSummaryOrder(views)` | 미완료를 지연 → 임박 → 정상, 같은 상태는 마감일 빠른 순 |
-| `buildBasicSummary(views)` | PRD 형식 1~5줄 문자열 + 줄별 "정답 사실" 반환 |
+| `formatDDay(dDay)` | `D-3` / `D-day` / `D+1` |
+| `sortViews(views)` | 지연 → 임박 → 정상 → 완료, 같은 상태는 마감일 빠른 순, 마감일도 같으면 등록 순(배열 순서) |
+| `shortenTitle(title)` | 15자 이하면 그대로, 넘으면 앞 14자 + "…" (문자 단위로 셈) |
+| `buildBasicSummary(views)` | PRD 형식(1줄 현황 → 미완료 최대 3건 → "그 외 ○건 (완료·지연·임박·정상)") 줄 배열 반환. 0건이면 1줄만 |
+| `normalizeLine(line)` | 앞뒤 공백 제거, "-"·"—" → "–" (사실 검사 비교용) |
+
+**상한 상수 (`lib/limits.ts`)**: 업무 100건, 업무당 할 일 50개, 업무명 50자, 메모 1,000자, 할 일 제목 30자, AI 제안 3~7개, 요약 5줄·60자, 요약 업무명 15자, 시간 제한 15초, 1분 5회·24시간 50회.
 
 ### 3.3 "오늘" 날짜 정하기
 - 기준은 **사용자 브라우저의 현지 날짜**(예: 한국 시간). 서버(Vercel)는 UTC라 날짜가 다를 수 있다.
 - 브라우저가 요청에 `today`를 함께 보내고, 서버는 `today`가 서버 날짜 ±1일 안인지만 확인한 뒤 그 값을 기준으로 계산한다.
+- 화면을 켜 둔 채 날짜가 바뀌면(1분마다, 그리고 창으로 돌아올 때 확인) 진행률·상태를 다시 계산하고, 이미 만든 요약에는 "바뀌었음"을 표시한다.
 
 ---
 
@@ -205,7 +220,7 @@ type TaskView = {
 | POST | `/api/summary` | 진행판 전체 요약 받기 | 접근 코드 + 호출 제한 |
 
 공통 요청 헤더: `x-access-code: <사용자가 입력한 접근 코드>`
-두 API는 **같은 호출 제한 계수기**를 함께 쓴다 (접속자 IP당 1분 5회·하루 50회).
+두 API는 **같은 호출 제한 계수기**를 함께 쓴다 (접속자 IP당 1분 5회·최근 24시간 50회). 입력 검사를 통과해 실제로 AI를 부르는 요청만 1회로 세며, 자동 재시도는 같은 1회에 포함된다.
 
 ### 4.2 `POST /api/steps`
 
@@ -213,7 +228,7 @@ type TaskView = {
 ```json
 { "title": "가을 체육행사 준비", "dueDate": "2026-10-20", "memo": "참가 인원 약 80명", "today": "2026-10-06" }
 ```
-- 검사: `title` 1~50자, `memo` 0~1,000자, 날짜 형식, `dueDate ≥ today`, `today`는 서버 날짜 ±1일.
+- 검사: `title` 1~50자, `memo` 0~1,000자, 날짜 형식, `dueDate ≥ today`(마감 지난 업무는 화면에서 버튼을 끄고, 서버도 400으로 거절), `today`는 서버 날짜 ±1일.
 
 **성공 응답 (200)**
 ```json
@@ -222,7 +237,7 @@ type TaskView = {
 ```json
 { "status": "need_more_info", "question": "어떤 행사를 준비하는지 조금 더 구체적으로 적어주세요." }
 ```
-- AI 응답 검증(PRD 5장): `steps` 3~7개, `title` 30자 이내·"하기"로 끝남·중복 없음, `dueDate`는 `today` 이상 업무 마감일 이하.
+- AI 응답 검증(PRD 5장): `steps` 3~7개, `title` 30자 이내·"하기"로 끝남·중복 없음, `dueDate`는 **필수**이고 `today` 이상 업무 마감일 이하(둘 다 포함). 빠지면 실패.
 
 ### 4.3 `POST /api/summary`
 
@@ -231,16 +246,16 @@ type TaskView = {
 { "today": "2026-10-06",
   "tasks": [ { "title": "가을 체육행사 준비", "dueDate": "2026-10-08", "total": 5, "done": 2 } ] }
 ```
-- 검사: 업무 0~100건, 각 `title` 1~50자, `0 ≤ done ≤ total ≤ 50`.
+- 검사: 업무 0~100건, 각 `title` 1~50자, `0 ≤ done ≤ total ≤ 50` (화면도 같은 상한을 쓰므로 정상 사용에서는 넘지 않는다). `tasks` 배열은 **등록 순서대로** 보낸다(같은 마감일 정렬 기준).
 
 **성공 응답 (200)**
 ```json
 { "source": "ai", "lines": ["전체 3건 | 완료 1 · 지연 0 · 임박 1 · 정상 1", "⚠ [임박] 가을 체육행사 준비 – 진행률 40% – 남은 할 일 3개 – 마감 10/08"] }
 ```
-- AI가 재시도 후에도 실패하면: `{ "source": "fallback", "lines": [...기본 요약...], "reason": "AI_INVALID" }` (200)
-- 업무가 0건이면 AI를 부르지 않고 `{ "source": "basic", "lines": ["전체 0건 | 완료 0 · 지연 0 · 임박 0 · 정상 0"] }`
+- AI가 재시도 후에도 실패하면(시간 초과·AI 오류·검증 실패 **모두**): `{ "source": "fallback", "lines": [...기본 요약...], "reason": "AI_TIMEOUT" | "AI_FAILED" | "AI_INVALID" }` (200)
+- 업무가 0건이면 AI를 부르지 않고(횟수 차감 없음) `{ "source": "basic", "lines": ["전체 0건 | 완료 0 · 지연 0 · 임박 0 · 정상 0"] }`
 
-**사실 검사 방법**: 서버가 같은 입력으로 `buildBasicSummary`를 실행해 "정답 사실표"를 만들고, AI가 쓴 각 줄에서 업무명·상태·진행률·남은 할 일·마감일·건수를 읽어내 정답과 한 글자도 다르지 않은지 비교한다. 줄 순서도 정답 순서와 같아야 한다.
+**사실 검사 방법**: 서버가 같은 입력으로 `buildBasicSummary`를 실행해 정답 줄 배열을 만든다. AI 응답을 줄로 나눠 빈 줄을 빼고, 각 줄에 `normalizeLine`을 적용한 뒤 정답 줄 배열과 **줄 수·순서·내용이 완전히 같은지** 비교한다. 줄을 쪼개 해석하지 않으므로 업무명 중복이나 업무명 안의 "–"·"|"도 문제없다.
 
 ---
 
@@ -260,7 +275,7 @@ type TaskView = {
 │ 전체 5건 | 완료 1 · 지연 1 · 임박 1 · 정상 2                     │ ← 현황 막대
 ├──────────────────────────────────────────────────────────────┤
 │ ┌ 업무 카드 (지연 → 임박 → 정상 → 완료, 같은 상태는 마감 빠른 순) ┐│
-│ │ ● 지연  3분기 예산 집행 점검          마감 10/03 (D+3)       ││ ← 상태 배지·색
+│ │ ● 지연  3분기 예산 집행 점검          마감 10/03  D+3        ││ ← 상태 배지·색·D-day
 │ │ ████████░░░░░░  60%   (3/5)                                  ││ ← 진행률 막대
 │ │ ☑ 집행 내역 내려받기하기   ☐ 차이 금액 확인하기 ...           ││ ← 할 일 체크
 │ │ [+ 할 일 추가] [AI로 단계 나누기] [수정] [삭제]               ││
@@ -274,11 +289,14 @@ type TaskView = {
 │ ⚠ 요약을 요청한 뒤 진행판이 바뀌었습니다  [다시 요약]  (필요 시)  │
 │ 1 전체 5건 | 완료 1 · 지연 1 · 임박 1 · 정상 2                   │
 │ 2 ⚠ [지연] 3분기 예산 집행 점검 – 진행률 60% – ...               │
-│ (AI 요약 / 기본 요약 표시)                         [복사]        │
+│ (평소 AI 요약 / AI 실패·0건일 때만 기본 요약)      [복사]        │
 └──────────────────────────────────────────────────────────────┘
 ```
 - 화면 폭이 좁으면(휴대폰) 모든 구역을 한 줄로 세로 배치한다.
 - 상태 색: 완료 = 회색, 지연 = 진한 빨강, 임박 = 빨강, 정상 = 기본색. 색만으로 구분하지 않도록 배지 글자(완료·지연·임박·정상)를 함께 쓴다.
+- D-day 표기: 남은 날 `D-3`, 당일 `D-day`, 지난 날 `D+1`.
+- 마감이 지난 업무는 [AI로 단계 나누기]가 꺼지고 "마감일을 먼저 수정하세요"가 보인다.
+- 업무 100건·할 일 50개에 닿으면 [등록]·[+ 할 일 추가]가 꺼지고 상한 안내가 보인다.
 
 ### 5.2 사용 흐름
 업무 등록 → [AI로 단계 나누기] → 제안 확인·수정 → [저장] → 할 일 체크 → 진행률·상태 갱신 → [요약 만들기] → [복사] → 상급자에게 전달
@@ -293,20 +311,27 @@ type TaskView = {
 | `TaskForm` | `components/TaskForm.tsx` | 업무 등록·수정 폼 (글자 수 표시) |
 | `StatusBar` | `components/StatusBar.tsx` | 전체·상태별 건수 |
 | `TaskCard` | `components/TaskCard.tsx` | 업무 1건: 배지, D-day, 진행률 막대, 버튼 |
-| `StepList` | `components/StepList.tsx` | 할 일 체크·추가·수정·삭제 |
-| `StepProposal` | `components/StepProposal.tsx` | AI 제안 확인·수정·[저장], 추가 입력 요청, 늦은 응답 안내 |
-| `SummaryPanel` | `components/SummaryPanel.tsx` | 요약 만들기·표시·바뀌었음 표시·복사 |
-| `AiErrorNotice` | `components/AiErrorNotice.tsx` | AI 오류 안내 + [다시 시도] + 대체 수단 |
+| `StepList` | `components/StepList.tsx` | 할 일 체크·추가·수정·삭제 (제목 1~30자, 날짜 선택, 50개 상한) |
+| `ManualStepInput` | `components/ManualStepInput.tsx` | 직접 입력칸(처음 3칸, [+ 칸 추가], 빈 칸 무시, 1개 이상이면 저장) — AI 실패 시 대체 수단 |
+| `StepProposal` | `components/StepProposal.tsx` | AI 제안 확인·수정·[저장]([뒤에 추가]/[바꾸기]·체크 손실 확인), 추가 입력 요청(질문 표시 → 메모 보충 → [다시 요청]), 늦은 응답 안내 |
+| `SummaryPanel` | `components/SummaryPanel.tsx` | 요약 만들기·표시(평소 AI, 실패·0건은 기본 요약)·바뀌었음 표시·복사 |
+| `AiErrorNotice` | `components/AiErrorNotice.tsx` | 오류 안내 + [다시 시도] + 대체 수단 (AI 오류뿐 아니라 접근 코드·횟수 초과·입력 오류에도) |
 
 ### 5.4 화면 체크리스트 (Check 단계에서 대조)
 - [ ] 안내 문구가 항상 보인다.
 - [ ] 업무명 51자·메모 1,001자는 입력되지 않고 남은 글자 수가 보인다.
 - [ ] 업무 카드에 상태 배지·D-day·진행률 막대·`완료/전체` 개수가 보인다.
-- [ ] 199개 중 198개 완료 업무는 99%·지연/임박/정상 중 하나로 보인다(완료 아님).
+- [ ] 50개 중 49개 완료 업무는 98%·완료 아님으로 보인다. (199/198 같은 큰 수는 단위 점검으로 확인)
+- [ ] D-day가 `D-3`/`D-day`/`D+1` 형식으로 보이고, 마감 지난 업무는 AI 버튼이 꺼져 있다.
+- [ ] 업무 100건·할 일 50개에서 추가 버튼이 꺼지고 안내가 보인다.
 - [ ] AI 제안은 [저장] 전까지 할 일 목록에 들어가지 않는다.
+- [ ] 할 일이 있는 업무에 제안을 저장하면 [뒤에 추가]/[바꾸기]를 묻고, 체크된 할 일이 사라질 땐 한 번 더 묻는다.
+- [ ] 추가 입력 요청을 받으면 질문과 [다시 요청]이 보인다.
 - [ ] 제안 요청 후 업무를 고치면 "제안을 적용하지 않았습니다"와 [제안 보기]/[다시 요청]이 보인다.
 - [ ] 요약 요청 후 체크를 바꾸면 "바뀌었음"과 [다시 요약]이 보이고 [복사]가 비활성화된다.
-- [ ] AI 오류 시 [다시 시도]와 직접 입력칸 3개(단계) / 기본 요약(요약)이 보인다.
+- [ ] AI 오류·접근 코드 오류·횟수 초과 시 [다시 시도]와 직접 입력칸 3개(단계) / 기본 요약(요약)이 보인다.
+- [ ] 평소에는 AI 요약이 보이고, 기본 요약은 AI 실패·업무 0건일 때만 보인다.
+- [ ] 요약을 만든 뒤 날짜가 바뀌면 "바뀌었음"이 보인다.
 - [ ] 저장소를 쓸 수 없으면 "이 브라우저에서는 저장되지 않습니다" 안내가 보이고 앱은 동작한다.
 
 ---
@@ -317,13 +342,16 @@ type TaskView = {
 
 | 코드 | HTTP | 언제 | 화면 안내 |
 |---|---|---|---|
-| `INVALID_INPUT` | 400 | 길이·형식·날짜 검사 실패 | 어떤 칸이 잘못됐는지 표시 |
-| `UNAUTHORIZED` | 401 | 접근 코드 없음·틀림 | "접근 코드를 확인해주세요" |
-| `RATE_LIMITED` | 429 | 1분 5회·하루 50회 초과 | "잠시 후 다시 시도해주세요" (남은 시간 표시) |
-| `AI_TIMEOUT` | 504 | 15초 초과가 2번 | "AI 응답을 받지 못했습니다" + [다시 시도] + 대체 수단 |
-| `AI_FAILED` | 502 | 네트워크·AI 서버 오류가 2번 | 위와 같음 |
-| `AI_INVALID` | 502 | 검증·사실 검사 실패가 2번 | 위와 같음 (요약은 200 + 기본 요약으로 대체) |
-| `SERVER_CONFIG` | 500 | 서버에 키·접근 코드 설정이 없음 | "서버 설정 오류" (값은 절대 표시하지 않음) |
+| `INVALID_INPUT` | 400 | 길이·형식·날짜·상한 검사 실패, 마감 지난 업무 | 어떤 칸이 잘못됐는지 표시 + 대체 수단 |
+| `UNAUTHORIZED` | 401 | 접근 코드 없음·틀림 | "접근 코드를 확인해주세요" + 대체 수단 |
+| `RATE_LIMITED` | 429 | 1분 5회·24시간 50회 초과 | "잠시 후 다시 시도해주세요"(남은 시간) + 대체 수단 |
+| `AI_TIMEOUT` | 504 | 마지막 시도가 15초 초과 | "AI 응답을 받지 못했습니다" + [다시 시도] + 대체 수단 |
+| `AI_FAILED` | 502 | 마지막 시도가 네트워크·AI 서버 오류 | 위와 같음 |
+| `AI_INVALID` | 502 | 마지막 시도가 검증·사실 검사 실패 | 위와 같음 |
+| `SERVER_CONFIG` | 500 | 서버에 키·접근 코드 설정이 없음 | "서버 설정 오류" (값은 절대 표시하지 않음) + 대체 수단 |
+
+- **요약 API**는 `AI_TIMEOUT`·`AI_FAILED`·`AI_INVALID`를 오류로 보내지 않고, 200 + `source: "fallback"` + `reason`(위 코드)으로 기본 요약을 보낸다. 화면은 "AI 요약을 받지 못해 기본 요약을 보여줍니다" + [다시 시도]를 함께 보여준다.
+- 대체 수단 = 단계 쪼개기는 직접 입력칸, 요약은 브라우저에서 같은 `buildBasicSummary`로 만든 기본 요약.
 
 ### 6.2 오류 응답 형식
 ```json
@@ -331,8 +359,8 @@ type TaskView = {
 ```
 
 ### 6.3 재시도 규칙 (`lib/server/ai.ts`)
-- 1회차 실패(시간 초과·네트워크·5xx·검증 실패) → **즉시 1회만** 재시도 → 실패하면 위 코드로 응답.
-- 4xx(키 오류 등)는 재시도하지 않는다.
+- 1회차 실패(시간 초과·네트워크·OpenAI 429·5xx·검증 실패) → **즉시 1회만** 재시도 → 실패하면 **마지막 시도의 원인**에 맞는 코드로 응답.
+- 429를 뺀 4xx(키 오류·잘못된 요청)는 다시 해도 소용없으므로 재시도하지 않고 `AI_FAILED`로 응답한다.
 - 두 번 시도하므로 라우트 최대 실행 시간을 40초로 둔다(`export const maxDuration = 40`).
 
 ---
@@ -343,8 +371,8 @@ type TaskView = {
 |---|---|
 | API 키 | `process.env.OPENAI_API_KEY`는 `lib/server/ai.ts`에서만 읽는다. 파일 맨 위 `import 'server-only'`. `NEXT_PUBLIC_` 금지. |
 | 접근 코드 | 서버 환경변수 `APP_ACCESS_CODE`. 요청 헤더 `x-access-code`와 `node:crypto`의 `timingSafeEqual`로 비교. 개발 환경에서 값이 없으면 검사를 건너뛰고, 배포 환경에서 값이 없으면 모든 AI 요청을 막는다(`SERVER_CONFIG`). |
-| 호출 제한 | `lib/server/rate-limit.ts` — 접속자 IP(`x-forwarded-for` 첫 값)별 메모리 계수기, 1분 5회·하루 50회. 서버 인스턴스마다 따로 세어질 수 있음 → 접근 코드 + OpenAI 월 사용 한도로 보완. |
-| 입력 길이 | 업무명 50자·메모 1,000자·요약 업무 100건 — 화면과 서버 양쪽에서 검사. |
+| 호출 제한 | `lib/server/rate-limit.ts` — 접속자 IP(`x-forwarded-for` 첫 값)별 메모리 계수기, 1분 5회·최근 24시간 50회. 검사 순서는 접근 코드 → 입력 검사 → 호출 제한이며, 실제로 AI를 부를 요청만 1회로 센다(재시도 포함 1회). 서버 인스턴스마다 따로 세어질 수 있음 → 접근 코드 + OpenAI 월 사용 한도로 보완. |
+| 입력 길이 | 업무명 50자·메모 1,000자·업무 100건·할 일 50개 — 화면과 서버 양쪽에서 같은 상수로 검사. |
 | 로그 | 서버 로그에는 오류 코드·소요 시간만 남기고 업무명·메모 본문은 남기지 않는다. |
 | 저장 위치 | 업무 데이터는 브라우저 `localStorage`에만. 서버·DB 저장 없음. |
 | 전송 최소화 | 요약 요청엔 메모·할 일 제목을 보내지 않는다. |
@@ -367,8 +395,12 @@ type TaskView = {
 - 진행률: (0,0)→0 · (5,2)→40 · (199,198)→99 · (3,3)→100 · (200,199)→99
 - 완료 판정: (0,0)→아님 · (199,198)→아님 · (1,1)→완료
 - 상태 경계: D-4 정상 · D-3 임박 · D-day 임박 · D+1 지연 · 지난 마감이지만 전부 완료 → 완료
-- 단계 검증: 2개·8개 → 실패 · 31자 → 실패 · "하기"로 안 끝남 → 실패 · 중복 → 실패 · 마감일 넘는 날짜 → 실패
-- 사실 검사: 진행률 1% 다름 → 실패 · 없는 업무명 → 실패 · 순서 바뀜 → 실패 · 6줄 → 실패 · 정답과 같음 → 통과
+- D-day 표기: 3 → `D-3` · 0 → `D-day` · -1 → `D+1`
+- 정렬: 같은 상태·같은 마감일이면 등록 순서 유지
+- 업무명 줄임: 15자 → 그대로 · 16자 → 14자 + "…" · 50자 업무명으로 만든 요약 줄 ≤ 60자
+- 기본 요약: 0건 → 1줄 · 미완료 2건 → 3줄(그 외 없음) · 미완료 5건(지연 5) → 5줄, 마지막 줄 `그 외 2건 (완료 0 · 지연 2 · 임박 0 · 정상 0)`
+- 단계 검증: 2개·8개 → 실패 · 31자 → 실패 · "하기"로 안 끝남 → 실패 · 중복 → 실패 · 마감일 넘는 날짜 → 실패 · 마감일 당일·오늘 → 통과 · `dueDate` 없음 → 실패
+- 사실 검사: 진행률 1% 다름 → 실패 · 없는 업무명 → 실패 · 순서 바뀜 → 실패 · 6줄 → 실패 · "-"를 쓴 것 외엔 정답과 같음 → 통과 · 정답과 같음 → 통과
 
 ### 8.3 L1 API 점검
 | # | 요청 | 기대 결과 |
@@ -378,6 +410,8 @@ type TaskView = {
 | 3 | 1분 안에 6번째 요청 | 429 `RATE_LIMITED` |
 | 4 | 정상 요청 | 200, `steps` 3~7개 또는 `need_more_info` |
 | 5 | 요약 정상 요청 | 200, `source`가 `ai` 또는 `fallback`, 5줄 이내 |
+| 6 | 요약, 업무 0건 | 200, `source`가 `basic`, 1줄, 호출 횟수 차감 없음 |
+| 7 | 마감 지난 업무로 단계 요청 | 400 `INVALID_INPUT` |
 
 ### 8.4 가상 데이터
 "가을 체육행사 준비", "3분기 예산 집행 점검", "강사 워크숍 운영", "교육 결과 보고서 작성", "상반기 성과 실적서 제출" — 실제 이름·연락처 없음.
@@ -389,10 +423,11 @@ type TaskView = {
 | 층 | 위치 | 규칙 |
 |---|---|---|
 | 화면 | `app/page.tsx`, `components/`, `hooks/` | `lib/server/`를 import하지 않는다 |
-| 규칙(공용) | `lib/*.ts` | 순수 함수만. 화면·서버·브라우저 API(localStorage 제외 파일)에 의존하지 않는다 |
+| 규칙(공용) | `lib/*.ts` | 순수 함수만. 브라우저 API·환경변수·서버 기능에 의존하지 않는다 |
+| 브라우저 전용 | `lib/client/*.ts` | localStorage 등 브라우저 API. 서버·테스트에서 import하지 않는다 |
 | 서버 전용 | `lib/server/*.ts`, `app/api/**` | 맨 위 `import 'server-only'`. 환경변수는 여기서만 읽는다 |
 
-`lib/` 파일끼리는 `./progress.ts`처럼 **확장자를 붙여** import한다(`node --test`가 바로 읽을 수 있도록). 이를 위해 `tsconfig.json`에 `"allowImportingTsExtensions": true`를 추가한다 — Do 단계 첫 작업에서 빌드가 되는지 확인하고, 안 되면 대안을 보고한다.
+`lib/` 파일끼리는 `./progress.ts`처럼 **확장자를 붙여** import하고, 타입만 가져올 땐 `import type`을 쓴다(Node 24의 `node --test`가 .ts를 바로 읽을 수 있도록 — Node 24.19 확인됨). 이를 위해 `tsconfig.json`에 `"allowImportingTsExtensions": true`를 추가한다 — Do 단계 첫 작업에서 빌드가 되는지 확인하고, 안 되면 대안을 보고한다.
 
 ---
 
@@ -404,7 +439,7 @@ type TaskView = {
 | 함수·변수 | 카멜 표기, 영어 | `calcProgress` |
 | 상수 | 대문자 스네이크 | `MAX_MEMO_LENGTH = 1000` |
 | 주석·안내 문구 | 한국어 | `// 미완료가 남으면 최대 99%` |
-| 규칙 숫자 | `lib/limits.ts` 한 곳에 상수로 | 50, 1000, 3, 7, 30, 5, 60, 15000 |
+| 규칙 숫자 | `lib/limits.ts` 한 곳에 상수로 | 100, 50, 1000, 30, 3, 7, 5, 60, 15, 15000 |
 
 ### 10.1 환경변수
 
@@ -426,19 +461,19 @@ app/
   page.tsx                (수정) <Board /> 하나만 표시
   api/steps/route.ts      (새로) 단계 쪼개기 API
   api/summary/route.ts    (새로) 진행 요약 API
-components/               (새로) 5.3의 화면 조각 10개
+components/               (새로) 5.3의 화면 조각 11개
 hooks/useBoard.ts         (새로) 저장·불러오기·revision·요청 추적
 lib/
   limits.ts               규칙 숫자 상수
   types.ts                데이터 형태
-  dates.ts                오늘·D-day 계산
+  dates.ts                오늘·D-day 계산·표기
   progress.ts             진행률·완료 판정
-  status.ts               상태 판정·정렬
-  summary.ts              기본 요약 + 정답 사실표
+  status.ts               상태 판정·정렬(같은 마감일은 등록 순)
+  summary.ts              기본 요약(업무명 15자 줄임, "그 외" 줄) + 줄 정리 함수
   validate-input.ts       입력 검사 (화면·서버 공용)
   validate-steps.ts       AI 단계 응답 검증
-  check-summary.ts        AI 요약 형식·사실 검사
-  storage.ts              localStorage 읽기·쓰기 (브라우저 전용)
+  check-summary.ts        AI 요약 형식 검사 + 기본 요약과 줄 단위 비교
+  client/storage.ts       localStorage 읽기·쓰기 (브라우저 전용)
   server/ai.ts            OpenAI 호출 (15초, 재시도 1회)
   server/prompts.ts       단계·요약 프롬프트
   server/guard.ts         접근 코드 + 호출 제한 + 오류 응답
@@ -453,12 +488,12 @@ tsconfig.json             (수정) allowImportingTsExtensions
 | 묶음 | PLAN 작업 | 만드는 파일 |
 |---|---|---|
 | A. 준비 | 1 | `layout.tsx`, `page.tsx`, `NoticeBanner` |
-| B. 기초 로직 | 2~7 | `lib/limits·types·dates·progress·status·storage`, `tests/`, `package.json`, `tsconfig.json` |
-| C. AI 없는 앱 | 8~13 | `useBoard`, `Board`, `TaskForm`, `TaskCard`, `StepList`, `StatusBar`, `lib/summary`, `SummaryPanel`(기본 요약) |
-| D. AI 공통 | 14~15 | `lib/server/ai`, `lib/validate-input` |
-| E. must 1 | 16~20 | `lib/server/prompts`, `lib/validate-steps`, `api/steps`, `StepProposal`, `useBoard` 요청 추적 |
-| F. must 2 | 21~24 | `lib/check-summary`, `api/summary`, `SummaryPanel`(AI·바뀌었음) |
-| G. 안전 | 25~27 | `AiErrorNotice`, `lib/server/guard·rate-limit`, `AccessCodeInput` |
+| B. 기초 로직 | 2~7 | `lib/limits·types·dates·progress·status`, `lib/client/storage`, `tests/`, `package.json`, `tsconfig.json` |
+| C. AI 없는 앱 | 8~13 | `lib/validate-input`, `useBoard`, `Board`, `TaskForm`, `TaskCard`, `StepList`, `ManualStepInput`, `StatusBar`, `lib/summary`, `SummaryPanel`(기본 요약, 임시) |
+| D. AI 공통 | 14~15 | `lib/server/ai`, 서버 입력 검사 연결(`today` 확인) |
+| E. must 1 | 16~20 | `lib/server/prompts`, `lib/validate-steps`, `api/steps`, `StepProposal`(추가/바꾸기·추가 입력 흐름), `useBoard` 요청 추적 |
+| F. must 2 | 21~24 | `lib/check-summary`, `api/summary`, `SummaryPanel`(AI·실패 시 기본 요약·바뀌었음) |
+| G. 안전 | 25~27 | `AiErrorNotice`, `lib/server/guard·rate-limit`, `AccessCodeInput`(접근 코드 입력 화면) |
 | H. 점검 | 28~29 | (코드 수정 없음) 보안 점검·전체 흐름 측정 |
 
 ### 11.3 세션 안내
@@ -480,3 +515,4 @@ tsconfig.json             (수정) allowImportingTsExtensions
 | 버전 | 날짜 | 내용 | 작성자 |
 |---|---|---|---|
 | 0.1 | 2026-10-06 | 첫 작성 (설계안 C, 추가 기술 없음) | 박건후 |
+| 0.2 | 2026-10-06 | design-validator 검토 17건 반영 (요약 줄 형식·상한·저장 방식·오류 처리 등) | 박건후 |
