@@ -48,3 +48,7 @@ next-env.d.ts
 
 # Claude Code 개인 설정 (사람마다 다름)
 /.claude/settings.local.json
+
+
+# Vercel CLI 연결 정보와 Vercel이 만든 .env.local (이미 위의 .env* 규칙으로도 제외됨)
+.vercel
