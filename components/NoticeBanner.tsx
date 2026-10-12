@@ -9,9 +9,9 @@ export default function NoticeBanner() {
     >
       <p>
         <span aria-hidden="true">ⓘ </span>
-        이름·주민등록번호·연락처·민원인 정보는 입력하지 마세요.
+        이름·주민등록번호·연락처·민원인 정보와 비공개·대외비 문서 내용은 입력하지 마세요.
       </p>
-      <p>입력한 내용은 AI 요청 시 외부 AI 제공자에게 전송됩니다.</p>
+      <p>입력한 내용은 AI 요청 시 해외 AI 제공자(OpenAI)로 전송됩니다.</p>
     </aside>
   );
 }

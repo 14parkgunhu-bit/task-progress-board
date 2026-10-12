@@ -76,6 +76,7 @@
 ## 보안 규칙
 
 - **`.env` 등 비밀 정보 파일과 `node_modules` 폴더는 `.gitignore`에 등록해 두고, 절대 커밋하지 않는다.**
+- **Vercel CLI로 배포할 때 `.env`가 올라가지 않도록 `.vercelignore`의 `.env*` 제외를 유지한다.** (Vercel CLI는 `.gitignore`가 아니라 `.vercelignore`를 기준으로 올린다)
 - **`.env`의 값을 출력·복사·로그에 남기지 않는다.** 확인이 필요하면 "값 있음/없음"으로만 말한다.
 - 비밀 값에 `NEXT_PUBLIC_` 접두사를 붙이지 않는다(브라우저에 노출됨).
 - 앱 코드가 읽는 비밀 값은 `OPENAI_API_KEY`(와 이후 추가할 접근 코드)뿐이다. `GITHUB_TOKEN`, `SUPABASE_ACCESS_TOKEN`, `VERCEL_TOKEN`은 개발 도구(CLI)용이며 앱 코드에서 읽지 않는다.

@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   title: "업무 진행판",
   description:
     "행정 업무를 할 일 단위로 등록하고 진행도를 한눈에 보여주는 개인용 진행판",
+  // 개인용 도구라서 검색 사이트에 노출되지 않게 한다 (PRD 7장 ④)
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
