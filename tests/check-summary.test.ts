@@ -57,3 +57,10 @@ test("viewsFromCounts는 미완료가 남으면 99%까지만", () => {
   assert.equal(view.progress, 98);
   assert.equal(view.status, "normal");
 });
+
+test("통과하면 정답 원문을 돌려준다 (업무명 안의 하이픈이 화면에서 바뀌지 않는다)", () => {
+  const dashViews = viewsFromCounts([{ title: "A-B 사업 점검", dueDate: "2026-10-20", total: 2, done: 1 }], TODAY);
+  const answer = buildBasicSummary(dashViews);
+  assert.ok(answer[1].includes("A-B 사업 점검"));
+  assert.deepEqual(checkSummary(asJson(answer), answer), answer);
+});

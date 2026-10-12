@@ -127,7 +127,7 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
   if (phase.kind === "loading") {
     return (
       <div className={panelClass} aria-live="polite">
-        <p>AI가 할 일을 나누는 중입니다… (최대 30초)</p>
+        <p>AI가 할 일을 나누는 중입니다… (최대 40초 정도)</p>
         <div>
           <button type="button" className={buttonClass} onClick={close}>
             취소

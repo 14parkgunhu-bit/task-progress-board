@@ -61,8 +61,10 @@ export async function askAi<T>(options: {
     try {
       const data = (await response.json()) as { choices?: { message?: { content?: unknown } }[] };
       content = data.choices?.[0]?.message?.content;
-    } catch {
-      return { ok: false, code: "AI_INVALID", retryable: true };
+    } catch (error) {
+      // 응답 본문을 읽는 중에 15초 제한에 걸린 경우는 시간 초과로 알린다
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+      return { ok: false, code: timedOut ? "AI_TIMEOUT" : "AI_INVALID", retryable: true };
     }
     const value = typeof content === "string" ? options.validate(content) : null;
     return value === null

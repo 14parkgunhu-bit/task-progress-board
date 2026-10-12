@@ -194,7 +194,7 @@ type TaskView = {
 | `calcProgress(total, doneCount)` | 0개면 0 · `Math.round(done/total*100)` · 미완료가 있으면 `min(결과, 99)` |
 | `isComplete(total, doneCount)` | `total ≥ 1 && doneCount === total` (퍼센트로 판정하지 않음) |
 | `calcStatus(total, doneCount, dueDate, today)` | 완료 → 지연(dDay < 0) → 임박(0 ≤ dDay ≤ 3) → 정상 |
-| `diffDays(dueDate, today)` | 두 "YYYY-MM-DD"를 날짜만으로 비교 (시각·시간대 무시) |
+| `diffDays(from, to)` · `calcDDay(dueDate, today)` | 두 "YYYY-MM-DD"를 날짜만으로 비교 (시각·시간대 무시). `diffDays`는 to - from, `calcDDay`는 마감까지 남은 날 수 |
 | `formatDDay(dDay)` | `D-3` / `D-day` / `D+1` |
 | `sortViews(views)` | 지연 → 임박 → 정상 → 완료, 같은 상태는 마감일 빠른 순, 마감일도 같으면 등록 순(배열 순서) |
 | `shortenTitle(title)` | 15자 이하면 그대로, 넘으면 앞 14자 + "…" (문자 단위로 셈) |
@@ -319,7 +319,7 @@ type TaskView = {
 
 ### 5.4 화면 체크리스트 (Check 단계에서 대조)
 - [ ] 안내 문구가 항상 보인다.
-- [ ] 업무명 51자·메모 1,001자는 입력되지 않고 남은 글자 수가 보인다.
+- [ ] 업무명은 50자·메모는 1,000자까지이며, 쓴 글자 수/최대(예: `51/50`)가 보이고 넘으면 빨간 안내와 함께 [등록]이 막힌다. (글자 수 계산이 브라우저의 `maxLength`와 달라 입력 자체를 막지는 않는다)
 - [ ] 업무 카드에 상태 배지·D-day·진행률 막대·`완료/전체` 개수가 보인다.
 - [ ] 50개 중 49개 완료 업무는 98%·완료 아님으로 보인다. (199/198 같은 큰 수는 단위 점검으로 확인)
 - [ ] D-day가 `D-3`/`D-day`/`D+1` 형식으로 보이고, 마감 지난 업무는 AI 버튼이 꺼져 있다.
@@ -348,17 +348,20 @@ type TaskView = {
 | `AI_TIMEOUT` | 504 | 마지막 시도가 15초 초과 | "AI 응답을 받지 못했습니다" + [다시 시도] + 대체 수단 |
 | `AI_FAILED` | 502 | 마지막 시도가 네트워크·AI 서버 오류 | 위와 같음 |
 | `AI_INVALID` | 502 | 마지막 시도가 검증·사실 검사 실패 | 위와 같음 |
+| (접근 코드 반복 오류) | 429 | 틀린 접근 코드가 10분에 10회를 넘음(맞는 코드여도 잠시 막음) | `RATE_LIMITED` + "접근 코드를 너무 많이 틀렸습니다" + 남은 시간 |
 | `SERVER_CONFIG` | 500 | 서버에 키·접근 코드 설정이 없음 | "서버 설정 오류" (값은 절대 표시하지 않음) + 대체 수단 |
 
 - **요약 API**는 `AI_TIMEOUT`·`AI_FAILED`·`AI_INVALID`를 오류로 보내지 않고, 200 + `source: "fallback"` + `reason`(위 코드)으로 기본 요약을 보낸다. 화면은 "AI 요약을 받지 못해 기본 요약을 보여줍니다" + [다시 시도]를 함께 보여준다.
 - 대체 수단 = 단계 쪼개기는 직접 입력칸, 요약은 브라우저에서 같은 `buildBasicSummary`로 만든 기본 요약.
+
+> **참고 — `need_more_info`는 버전 비교를 하지 않는다**: 이 흐름은 "메모를 보충한 뒤 [다시 요청]"이라 사용자가 업무를 고치는 것이 정상 경로다. 제안(`ok`)만 요청 당시 버전과 비교한다.
 
 ### 6.2 오류 응답 형식
 ```json
 { "error": { "code": "RATE_LIMITED", "message": "잠시 후 다시 시도해주세요.", "retryAfterSec": 42 } }
 ```
 
-### 6.3 재시도 규칙 (`lib/server/ai.ts`)
+### 6.3 재시도 규칙 (판단 로직은 `lib/ai-retry.ts`, 호출은 `lib/server/ai.ts`)
 - 1회차 실패(시간 초과·네트워크·OpenAI 429·5xx·검증 실패) → **즉시 1회만** 재시도 → 실패하면 **마지막 시도의 원인**에 맞는 코드로 응답.
 - 429를 뺀 4xx(키 오류·잘못된 요청)는 다시 해도 소용없으므로 재시도하지 않고 `AI_FAILED`로 응답한다.
 - 두 번 시도하므로 라우트 최대 실행 시간을 40초로 둔다(`export const maxDuration = 40`).
@@ -425,7 +428,7 @@ type TaskView = {
 | 화면 | `app/page.tsx`, `components/`, `hooks/` | `lib/server/`를 import하지 않는다 |
 | 규칙(공용) | `lib/*.ts` | 순수 함수만. 브라우저 API·환경변수·서버 기능에 의존하지 않는다 |
 | 브라우저 전용 | `lib/client/*.ts` | localStorage 등 브라우저 API. 서버·테스트에서 import하지 않는다 |
-| 서버 전용 | `lib/server/*.ts`, `app/api/**` | 맨 위 `import 'server-only'`. 환경변수는 여기서만 읽는다 |
+| 서버 전용 | `lib/server/*.ts`, `app/api/**` | `lib/server/*.ts`는 맨 위 `import 'server-only'`. `app/api/**/route.ts`는 서버에서만 실행되며 `lib/server`를 통해 간접으로 보호된다. 환경변수는 여기서만 읽는다 |
 
 `lib/` 파일끼리는 `./progress.ts`처럼 **확장자를 붙여** import하고, 타입만 가져올 땐 `import type`을 쓴다(Node 24의 `node --test`가 .ts를 바로 읽을 수 있도록 — Node 24.19 확인됨). 이를 위해 `tsconfig.json`에 `"allowImportingTsExtensions": true`를 추가한다 — Do 단계 첫 작업에서 빌드가 되는지 확인하고, 안 되면 대안을 보고한다.
 
@@ -462,7 +465,7 @@ app/
   api/steps/route.ts      (새로) 단계 쪼개기 API
   api/summary/route.ts    (새로) 진행 요약 API
 components/               (새로) 5.3의 화면 조각 11개
-hooks/useBoard.ts         (새로) 저장·불러오기·revision·요청 추적
+hooks/useBoard.ts         (새로) 진행판 상태·조작을 화면에 연결 (저장은 lib/client/board-store, 날짜는 lib/client/today-store)
 lib/
   limits.ts               규칙 숫자 상수
   types.ts                데이터 형태
@@ -473,7 +476,15 @@ lib/
   validate-input.ts       입력 검사 (화면·서버 공용)
   validate-steps.ts       AI 단계 응답 검증
   check-summary.ts        AI 요약 형식 검사 + 기본 요약과 줄 단위 비교
+  board.ts                저장 데이터 검사 + 진행판 조작(업무·할 일 추가/수정/삭제/체크, AI 제안 반영) — 순수 함수
+  ai-retry.ts             재시도 규칙(1회, 429·5xx만) — 순수 함수
+  format-wait.ts          남은 시간 표시
   client/storage.ts       localStorage 읽기·쓰기 (브라우저 전용)
+  client/board-store.ts   진행판 상태 저장소 (useSyncExternalStore용)
+  client/today-store.ts   "오늘" 날짜 구독 (1분마다·창 복귀 시)
+  client/access-code-store.ts  접근 코드 보관 (sessionStorage)
+  client/api.ts           서버 API 호출 (접근 코드 헤더 자동 첨부)
+  server/http.ts          오류 응답·본문 읽기·"오늘" 날짜 확인
   server/ai.ts            OpenAI 호출 (15초, 재시도 1회)
   server/prompts.ts       단계·요약 프롬프트
   server/guard.ts         접근 코드 + 호출 제한 + 오류 응답
@@ -493,7 +504,7 @@ tsconfig.json             (수정) allowImportingTsExtensions
 | D. AI 공통 | 14~15 | `lib/server/ai`, 서버 입력 검사 연결(`today` 확인) |
 | E. must 1 | 16~20 | `lib/server/prompts`, `lib/validate-steps`, `api/steps`, `StepProposal`(추가/바꾸기·추가 입력 흐름), `useBoard` 요청 추적 |
 | F. must 2 | 21~24 | `lib/check-summary`, `api/summary`, `SummaryPanel`(AI·실패 시 기본 요약·바뀌었음) |
-| G. 안전 | 25~27 | `AiErrorNotice`, `lib/server/guard·rate-limit`, `AccessCodeInput`(접근 코드 입력 화면) |
+| G. 안전 | 25~27 | `AiErrorNotice`, `lib/rate-limit`(순수) + `lib/server/guard`, `AccessCodeInput`(접근 코드 입력 화면) |
 | H. 점검 | 28~29 | (코드 수정 없음) 보안 점검·전체 흐름 측정 |
 
 ### 11.3 세션 안내
@@ -517,3 +528,4 @@ tsconfig.json             (수정) allowImportingTsExtensions
 | 0.1 | 2026-10-06 | 첫 작성 (설계안 C, 추가 기술 없음) | 박건후 |
 | 0.2 | 2026-10-06 | design-validator 검토 17건 반영 (요약 줄 형식·상한·저장 방식·오류 처리 등) | 박건후 |
 | 0.3 | 2026-10-12 | 보안 점검(security-architect) 반영: 틀린 접근 코드 제한, IPv6 /64, 응답 길이 상한, 보안 헤더, 문서·코드 불일치 수정 | 박건후 |
+| 0.4 | 2026-10-12 | 갭 분석(93%) 반영: 문서·코드 불일치 수정, 업무 0건 요약은 화면에서 처리, 남은 시간·안내 문구 정리 | 박건후 |

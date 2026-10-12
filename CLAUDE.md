@@ -40,7 +40,7 @@
 - `app/api/summary/route.ts`: AI 진행 요약 API (서버 전용)
 - `lib/`: 데이터 형태(타입), 진행률·상태 계산, 기본 요약, AI 응답 검증 같은 공통 로직 (순수 함수)
 - `lib/client/`: localStorage 같은 브라우저 전용 코드
-- `lib/server/`: AI 호출·접근 코드·호출 제한 같은 서버 전용 코드 (`import 'server-only'`)
+- `lib/server/`: AI 호출·접근 코드 확인·호출 제한 적용 같은 서버 전용 코드 (`import 'server-only'`). 호출 제한·재시도의 판단 로직(`lib/rate-limit.ts`, `lib/ai-retry.ts`)은 테스트할 수 있게 순수 함수로 `lib/`에 둔다.
 - `hooks/`: 화면 상태 관리(`useBoard`)
 - `tests/`: `lib/` 단위 점검 (`npm test` = `node --test`)
 - `components/`: 화면 조각(업무 폼, 진행판, 요약 패널 등)

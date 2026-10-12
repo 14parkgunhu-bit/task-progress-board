@@ -32,3 +32,13 @@ test("상한을 넘는 저장 데이터는 거절한다 (업무 101건, 할 일 
   const bigTask = makeTask("big", "2026-10-20", 0, 51);
   assert.equal(parseBoardData({ schemaVersion: 1, revision: 0, tasks: [bigTask] }), null);
 });
+
+test("글자 수 상한을 넘는 저장 데이터는 거절한다 (업무명 51자·메모 1,001자·할 일 제목 31자)", () => {
+  const good = makeTask("t", "2026-10-20", 0, 1);
+  const wrap = (task: typeof good) => ({ schemaVersion: 1, revision: 0, tasks: [task] });
+  assert.notEqual(parseBoardData(wrap({ ...good, title: "가".repeat(50), memo: "가".repeat(1000) })), null);
+  assert.equal(parseBoardData(wrap({ ...good, title: "가".repeat(51) })), null);
+  assert.equal(parseBoardData(wrap({ ...good, title: "" })), null);
+  assert.equal(parseBoardData(wrap({ ...good, memo: "가".repeat(1001) })), null);
+  assert.equal(parseBoardData(wrap({ ...good, steps: [{ ...good.steps[0], title: "가".repeat(31) }] })), null);
+});

@@ -3,6 +3,7 @@
 // Design Ref: §5.3 AiErrorNotice · §6.1 — 오류 안내 + [다시 시도] + 대체 수단 (PLAN 작업 25)
 // AI 오류뿐 아니라 접근 코드·호출 횟수 초과·입력 오류에도 같은 대체 수단을 보여준다.
 import type { ReactNode } from "react";
+import { formatWait } from "@/lib/format-wait.ts";
 
 type Props = {
   code: string;
@@ -33,12 +34,6 @@ function hint(code: string, retryAfterSec?: number): string | null {
     default:
       return null;
   }
-}
-
-function formatWait(seconds: number): string {
-  if (seconds < 60) return `${seconds}초`;
-  if (seconds < 3600) return `${Math.ceil(seconds / 60)}분`;
-  return `${Math.ceil(seconds / 3600)}시간`;
 }
 
 export default function AiErrorNotice({ code, message, retryAfterSec, onRetry, onClose, children }: Props) {

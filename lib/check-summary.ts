@@ -23,7 +23,7 @@ function extractLines(content: string): string[] | null {
 }
 
 /**
- * AI 요약을 검사한다. 통과하면 정리한 줄 목록, 하나라도 어긋나면 null.
+ * AI 요약을 검사한다. 통과하면 앱이 계산한 정답 줄 목록(업무명 안의 "-" 같은 기호도 원문 그대로), 하나라도 어긋나면 null.
  * - 형식: 최대 5줄, 한 줄 60자 이내
  * - 사실: 정답 줄과 줄 수·순서·내용(건수·업무명·상태·진행률·남은 할 일·마감일)이 모두 같음
  */
@@ -35,5 +35,6 @@ export function checkSummary(content: string, expected: readonly string[]): stri
   if (normalized.some((line) => countChars(line) > SUMMARY_MAX_LINE_LENGTH)) return null;
   const answer = expected.map(normalizeLine);
   if (normalized.length !== answer.length) return null;
-  return normalized.every((line, index) => line === answer[index]) ? normalized : null;
+  // 비교에는 정리한 줄을 쓰지만, 화면에는 정답 원문을 돌려준다(정리 과정에서 업무명의 기호가 바뀌어 보이지 않게)
+  return normalized.every((line, index) => line === answer[index]) ? [...expected] : null;
 }

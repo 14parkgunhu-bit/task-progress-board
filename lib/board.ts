@@ -1,9 +1,23 @@
 // Design Ref: §3.1 BoardData — 저장 데이터 검사(순수 함수)
 // 브라우저에 저장된 값은 사용자가 고치거나 깨질 수 있으므로, 불러올 때 형태를 하나하나 확인한다.
 import { isValidDateString } from "./dates.ts";
-import { MAX_STEPS_PER_TASK, MAX_TASKS } from "./limits.ts";
+import {
+  MAX_MEMO_LENGTH,
+  MAX_STEP_TITLE_LENGTH,
+  MAX_STEPS_PER_TASK,
+  MAX_TASK_TITLE_LENGTH,
+  MAX_TASKS,
+} from "./limits.ts";
 import { BOARD_SCHEMA_VERSION } from "./types.ts";
 import type { BoardData, Step, Task } from "./types.ts";
+import { countChars } from "./validate-input.ts";
+
+/** 문자열이고 글자 수가 min~max 안인지 */
+function isTextWithin(value: unknown, min: number, max: number): value is string {
+  if (typeof value !== "string") return false;
+  const length = countChars(value);
+  return length >= min && length <= max;
+}
 
 /** 빈 진행판 */
 export function createEmptyBoard(): BoardData {
@@ -22,7 +36,7 @@ function isStep(value: unknown): value is Step {
   if (!isRecord(value)) return false;
   return (
     typeof value.id === "string" &&
-    typeof value.title === "string" &&
+    isTextWithin(value.title, 1, MAX_STEP_TITLE_LENGTH) &&
     (value.dueDate === undefined || isValidDateString(value.dueDate)) &&
     typeof value.done === "boolean" &&
     (value.source === "ai" || value.source === "manual") &&
@@ -34,9 +48,9 @@ function isTask(value: unknown): value is Task {
   if (!isRecord(value)) return false;
   return (
     typeof value.id === "string" &&
-    typeof value.title === "string" &&
+    isTextWithin(value.title, 1, MAX_TASK_TITLE_LENGTH) &&
     isValidDateString(value.dueDate) &&
-    typeof value.memo === "string" &&
+    isTextWithin(value.memo, 0, MAX_MEMO_LENGTH) &&
     Array.isArray(value.steps) &&
     value.steps.length <= MAX_STEPS_PER_TASK &&
     value.steps.every(isStep) &&

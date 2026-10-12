@@ -6,6 +6,7 @@
 // - 요약을 만든 뒤 진행판이나 날짜가 바뀌면 "바뀌었음" + [다시 요약]을 보여주고, 그동안 복사를 막는다.
 import { useRef, useState } from "react";
 import { postJson } from "@/lib/client/api.ts";
+import { formatWait } from "@/lib/format-wait.ts";
 import { buildBasicSummary, type SummaryTaskInput } from "@/lib/summary.ts";
 import type { Task, TaskView } from "@/lib/types.ts";
 
@@ -54,6 +55,14 @@ export default function SummaryPanel({ views, tasks, revision, today }: Props) {
     const requestId = ++latestRequest.current;
     const revisionAtRequest = revision;
     const todayAtRequest = today;
+    // 요청한 시점의 기본 요약 — 대체 요약은 이 값으로 보여준다(응답이 늦게 와도 요청 시점의 버전과 내용이 일치)
+    const localLines = buildBasicSummary(views);
+    // 업무가 0건이면 AI도 서버도 부르지 않고 화면에서 바로 기본 요약을 보여준다 (PRD must 2)
+    if (tasks.length === 0) {
+      setCopyState("idle");
+      setPhase({ kind: "result", lines: localLines, source: "basic", revision: revisionAtRequest, today: todayAtRequest });
+      return;
+    }
     // 메모·할 일 제목은 보내지 않는다 (DESIGN 7장 전송 최소화)
     const payload: SummaryTaskInput[] = tasks.map((task) => ({
       title: task.title,
@@ -77,11 +86,15 @@ export default function SummaryPanel({ views, tasks, revision, today }: Props) {
     } else {
       // AI를 부르지 못한 경우(네트워크·입력·서버 설정·형식이 틀린 응답 등)에도 브라우저에서 같은 규칙으로 기본 요약을 만든다
       const reason = result.ok ? "AI 응답 형식이 올바르지 않습니다." : result.message;
+      const wait =
+        !result.ok && result.retryAfterSec !== undefined
+          ? ` 약 ${formatWait(result.retryAfterSec)} 뒤에 다시 시도하세요.`
+          : "";
       setPhase({
         kind: "result",
-        lines: buildBasicSummary(views),
+        lines: localLines,
         source: "local",
-        note: `${reason} 기본 요약을 대신 보여줍니다.`,
+        note: `${reason}${wait} 기본 요약을 대신 보여줍니다.`,
         revision: revisionAtRequest,
         today: todayAtRequest,
       });
@@ -115,13 +128,13 @@ export default function SummaryPanel({ views, tasks, revision, today }: Props) {
           disabled={phase.kind === "loading"}
           className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
         >
-          {phase.kind === "result" ? (failed ? "다시 시도" : "다시 요약") : "요약 만들기"}
+          {phase.kind === "result" ? (failed && !stale ? "다시 시도" : "다시 요약") : "요약 만들기"}
         </button>
       </div>
 
       {phase.kind === "loading" && (
         <p className="text-sm text-zinc-500" aria-live="polite">
-          AI가 요약하는 중입니다… (최대 30초)
+          AI가 요약하는 중입니다… (최대 40초 정도)
         </p>
       )}
 
@@ -129,7 +142,7 @@ export default function SummaryPanel({ views, tasks, revision, today }: Props) {
         <>
           {stale && (
             <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-              ⚠ 요약을 요청한 뒤 진행판이 바뀌었습니다. [다시 요약]을 눌러주세요.
+              ⚠ 요약을 요청한 뒤 진행판이 바뀌었습니다. 위의 [다시 요약] 버튼을 눌러주세요.
             </p>
           )}
           {failed && (
