@@ -308,7 +308,7 @@ type TaskView = {
 |---|---|---|
 | `Board` | `components/Board.tsx` | 진행판 전체 (클라이언트 컴포넌트, `useBoard` 사용) |
 | `NoticeBanner` | `components/NoticeBanner.tsx` | 개인정보·외부 전송 안내 문구 |
-| `AccessCodeInput` | `components/AccessCodeInput.tsx` | 접근 코드 입력·상태 표시 (브라우저 sessionStorage에 보관) |
+| `AccessCodeInput` | `components/AccessCodeInput.tsx` | 접근 코드 입력·상태 표시. 기본은 sessionStorage(탭을 닫으면 지워짐), "이 기기에서 기억하기"를 켜면 localStorage(이 기기에서 계속 유지). 기본값은 꺼짐(공용 PC 대비) |
 | `TaskForm` | `components/TaskForm.tsx` | 업무 등록·수정 폼 (글자 수 표시) |
 | `StatusBar` | `components/StatusBar.tsx` | 전체·상태별 건수 |
 | `TaskCard` | `components/TaskCard.tsx` | 업무 1건: 배지, D-day, 진행률 막대, 버튼 |
@@ -497,7 +497,7 @@ lib/
   client/storage.ts       localStorage 읽기·쓰기 (브라우저 전용)
   client/board-store.ts   진행판 상태 저장소 (useSyncExternalStore용, 저장 결과·복원)
   client/today-store.ts   "오늘" 날짜 구독 (1분마다·창 복귀 시)
-  client/access-code-store.ts  접근 코드 보관 (sessionStorage)
+  client/access-code-store.ts  접근 코드 보관 (기본 sessionStorage, 기억하기 켜면 localStorage)
   client/api.ts           서버 API 호출 (접근 코드 헤더 자동 첨부)
   server/http.ts          오류 응답·본문 읽기·"오늘" 날짜 확인
   server/ai.ts            OpenAI 호출 (15초, 재시도 1회)
@@ -546,3 +546,4 @@ tsconfig.json             (수정) allowImportingTsExtensions
 | 0.4 | 2026-10-12 | 갭 분석(93%) 반영: 문서·코드 불일치 수정, 업무 0건 요약은 화면에서 처리, 남은 시간·안내 문구 정리 | 박건후 |
 | 0.5 | 2026-10-12 | 공개 전 보안 점검 반영(개인용 기준): 안내 문구 보강, 검색 노출 차단(noindex), 배포 파일 제한(.vercelignore) | 박건후 |
 | 0.6 | 2026-10-12 | Codex UX 추가(등록 안내·필터·백업 복원·마감일 하한) 반영, 이름 한 줄 규칙·글자 단위 세기(갭 G1·G3·G4) | 박건후 |
+| 0.7 | 2026-10-12 | 접근 코드 "이 기기에서 기억하기" 추가(개인 폰·PC에서 한 번만 입력) | 박건후 |
