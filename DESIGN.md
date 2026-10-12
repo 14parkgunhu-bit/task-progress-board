@@ -201,7 +201,7 @@ type TaskView = {
 | `buildBasicSummary(views)` | PRD 형식(1줄 현황 → 미완료 최대 3건 → "그 외 ○건 (완료·지연·임박·정상)") 줄 배열 반환. 0건이면 1줄만 |
 | `normalizeLine(line)` | 앞뒤 공백 제거, "-"·"—" → "–" (사실 검사 비교용) |
 
-**상한 상수 (`lib/limits.ts`)**: 업무 100건, 업무당 할 일 50개, 업무명 50자, 메모 1,000자, 할 일 제목 30자, AI 제안 3~7개, 요약 5줄·60자, 요약 업무명 15자, 시간 제한 15초, 1분 5회·24시간 50회.
+**상한 상수 (`lib/limits.ts`)**: 업무 100건, 업무당 할 일 50개, 업무명 50자, 메모 1,000자, 할 일 제목 30자, AI 제안 3~7개, AI 추가 질문 200자, 요약 5줄·60자, 요약 업무명 15자, 시간 제한 15초, 1분 5회·24시간 50회, 틀린 접근 코드 10분 10회, 백업 파일 5MB, 새 마감일 하한 2026-01-01.
 
 ### 3.3 "오늘" 날짜 정하기
 - 기준은 **사용자 브라우저의 현지 날짜**(예: 한국 시간). 서버(Vercel)는 UTC라 날짜가 다를 수 있다.
@@ -317,6 +317,14 @@ type TaskView = {
 | `StepProposal` | `components/StepProposal.tsx` | AI 제안 확인·수정·[저장]([뒤에 추가]/[바꾸기]·체크 손실 확인), 추가 입력 요청(질문 표시 → 메모 보충 → [다시 요청]), 늦은 응답 안내 |
 | `SummaryPanel` | `components/SummaryPanel.tsx` | 요약 만들기·표시(평소 AI, 실패·0건은 기본 요약)·바뀌었음 표시·복사 |
 | `AiErrorNotice` | `components/AiErrorNotice.tsx` | 오류 안내 + [다시 시도] + 대체 수단 (AI 오류뿐 아니라 접근 코드·횟수 초과·입력 오류에도) |
+| `BackupPanel` | `components/BackupPanel.tsx` | 백업 내보내기(앱 JSON 파일 다운로드), 백업 파일 선택 → 미리보기(현재/복원 업무 수·할 일·완료 체크 수) → 동의 체크 → [확인한 범위로 복원]. 파일은 브라우저 안에서만 읽는다(외부 전송 없음) |
+
+**2026-10-12 추가 화면 동작 (PRD 5장 "승인된 UX 추가")**
+- **등록 결과 안내** (`Board`): "이 브라우저에 저장했습니다" / "화면에만 등록(저장 실패)" / "등록되지 않음"을 구분해 보여준다. 등록이 거절되면 입력을 지우지 않는다. 저장 결과는 `updateBoard`가 돌려주는 `saved`·`memory`·`unchanged`로 판단한다.
+- **업무 상태 필터** (`Board`, `lib/status.ts` `filterViews`): [전체 ○건]·[임박 ○건]·[지연 ○건]. 업무 목록에만 적용하고, 현황 막대와 AI 요약은 전체 업무 기준을 유지한다. 복원 후에는 [전체]로 돌아간다.
+- **백업·복원** (`lib/backup.ts`, `lib/client/board-store.ts` `restoreBoard`): 최대 5MB, 형식 `task-board-backup`. 저장 데이터 검사(`parseBoardData`)와 중복 ID 검사를 통과한 파일만 받는다. 미리보기 이후 진행판이 바뀌었으면 복원하지 않는다. 복원한 업무는 버전 번호를 다시 매겨 이전 AI 응답이 덮어쓰지 못하게 한다. 실패하면 기존 데이터를 그대로 둔다.
+- **마감일 하한**: 새 업무 등록·수정은 2026-01-01부터(`MIN_TASK_DUE_DATE`). 이미 저장된 이전 연도 업무는 그대로 불러온다.
+- **이름 규칙**: 업무명·할 일 제목은 한 줄(`isSingleLineName`) — 줄바꿈·제어 문자·공백만 있는 이름은 화면·저장·복원·AI 제안·요약 API 모두에서 거절한다. 글자 수는 화면에 보이는 글자 단위(`Intl.Segmenter`).
 
 ### 5.4 화면 체크리스트 (Check 단계에서 대조)
 - [ ] 안내 문구가 항상 보인다.
@@ -334,6 +342,9 @@ type TaskView = {
 - [ ] 평소에는 AI 요약이 보이고, 기본 요약은 AI 실패·업무 0건일 때만 보인다.
 - [ ] 요약을 만든 뒤 날짜가 바뀌면 "바뀌었음"이 보인다.
 - [ ] 저장소를 쓸 수 없으면 "이 브라우저에서는 저장되지 않습니다" 안내가 보이고 앱은 동작한다.
+- [ ] 업무를 등록하면 저장 결과 안내가 보이고, 2025년 마감일은 "2026년부터" 안내와 함께 거절되며 입력이 남는다.
+- [ ] [임박]·[지연] 필터를 누르면 해당 업무만 보이고, 현황 막대·요약은 전체 기준이다.
+- [ ] 백업 내보내기 → 파일 선택 → 미리보기 → 동의 → 복원이 되고, 줄바꿈 업무명·깨진 파일은 거절되며 기존 데이터가 남는다.
 
 ---
 
@@ -430,7 +441,7 @@ type TaskView = {
 |---|---|---|
 | 화면 | `app/page.tsx`, `components/`, `hooks/` | `lib/server/`를 import하지 않는다 |
 | 규칙(공용) | `lib/*.ts` | 순수 함수만. 브라우저 API·환경변수·서버 기능에 의존하지 않는다 |
-| 브라우저 전용 | `lib/client/*.ts` | localStorage 등 브라우저 API. 서버·테스트에서 import하지 않는다 |
+| 브라우저 전용 | `lib/client/*.ts` | localStorage 등 브라우저 API. 서버에서 import하지 않는다. 테스트는 가상 저장소(`globalThis.window`)를 넣은 경우에만 import한다(`tests/board-store.test.ts`) |
 | 서버 전용 | `lib/server/*.ts`, `app/api/**` | `lib/server/*.ts`는 맨 위 `import 'server-only'`. `app/api/**/route.ts`는 서버에서만 실행되며 `lib/server`를 통해 간접으로 보호된다. 환경변수는 여기서만 읽는다 |
 
 `lib/` 파일끼리는 `./progress.ts`처럼 **확장자를 붙여** import하고, 타입만 가져올 땐 `import type`을 쓴다(Node 24의 `node --test`가 .ts를 바로 읽을 수 있도록 — Node 24.19 확인됨). 이를 위해 `tsconfig.json`에 `"allowImportingTsExtensions": true`를 추가한다 — Do 단계 첫 작업에서 빌드가 되는지 확인하고, 안 되면 대안을 보고한다.
@@ -482,8 +493,9 @@ lib/
   board.ts                저장 데이터 검사 + 진행판 조작(업무·할 일 추가/수정/삭제/체크, AI 제안 반영) — 순수 함수
   ai-retry.ts             재시도 규칙(1회, 429·5xx만) — 순수 함수
   format-wait.ts          남은 시간 표시
+  backup.ts               백업 형식 검사·직렬화·복원 버전 처리 (외부 전송 없음)
   client/storage.ts       localStorage 읽기·쓰기 (브라우저 전용)
-  client/board-store.ts   진행판 상태 저장소 (useSyncExternalStore용)
+  client/board-store.ts   진행판 상태 저장소 (useSyncExternalStore용, 저장 결과·복원)
   client/today-store.ts   "오늘" 날짜 구독 (1분마다·창 복귀 시)
   client/access-code-store.ts  접근 코드 보관 (sessionStorage)
   client/api.ts           서버 API 호출 (접근 코드 헤더 자동 첨부)
@@ -533,3 +545,4 @@ tsconfig.json             (수정) allowImportingTsExtensions
 | 0.3 | 2026-10-12 | 보안 점검(security-architect) 반영: 틀린 접근 코드 제한, IPv6 /64, 응답 길이 상한, 보안 헤더, 문서·코드 불일치 수정 | 박건후 |
 | 0.4 | 2026-10-12 | 갭 분석(93%) 반영: 문서·코드 불일치 수정, 업무 0건 요약은 화면에서 처리, 남은 시간·안내 문구 정리 | 박건후 |
 | 0.5 | 2026-10-12 | 공개 전 보안 점검 반영(개인용 기준): 안내 문구 보강, 검색 노출 차단(noindex), 배포 파일 제한(.vercelignore) | 박건후 |
+| 0.6 | 2026-10-12 | Codex UX 추가(등록 안내·필터·백업 복원·마감일 하한) 반영, 이름 한 줄 규칙·글자 단위 세기(갭 G1·G3·G4) | 박건후 |
