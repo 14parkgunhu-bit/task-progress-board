@@ -1,8 +1,8 @@
 // Design Ref: §4.2 POST /api/steps — 업무를 할 일로 쪼갠 제안 받기 (서버 전용)
-// 순서: 입력 검사 → AI 호출(15초, 재시도 1회) → 응답 검증 → 응답
-// (접근 코드·호출 제한은 PLAN 작업 26~27에서 이 앞에 들어온다)
+// 순서: 접근 코드 → 입력 검사 → 호출 제한(1회 차감) → AI 호출(15초, 재시도 1회) → 응답 검증 → 응답
 import { diffDays } from "@/lib/dates.ts";
 import { askAi, hasApiKey } from "@/lib/server/ai.ts";
+import { checkAccessCode, consumeRateLimit } from "@/lib/server/guard.ts";
 import { errorResponse, isAcceptableToday, okResponse, readJson } from "@/lib/server/http.ts";
 import { buildStepsPrompt } from "@/lib/server/prompts.ts";
 import { validateTaskInput } from "@/lib/validate-input.ts";
@@ -12,6 +12,9 @@ import { parseStepsResponse } from "@/lib/validate-steps.ts";
 export const maxDuration = 40;
 
 export async function POST(request: Request): Promise<Response> {
+  const denied = checkAccessCode(request);
+  if (denied) return denied;
+
   const body = await readJson(request);
   if (typeof body !== "object" || body === null) return errorResponse("INVALID_INPUT");
   const raw = body as Record<string, unknown>;
@@ -35,6 +38,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (!hasApiKey()) return errorResponse("SERVER_CONFIG");
+  const limited = consumeRateLimit(request);
+  if (limited) return limited;
 
   const result = await askAi({
     label: "steps",

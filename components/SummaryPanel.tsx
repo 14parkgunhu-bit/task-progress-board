@@ -54,7 +54,7 @@ export default function SummaryPanel({ views, tasks, revision, today }: Props) {
     }));
     setCopyState("idle");
     setPhase({ kind: "loading" });
-    const result = await postJson<SummaryResponse>("/api/summary", { today: todayAtRequest, tasks: payload }, null);
+    const result = await postJson<SummaryResponse>("/api/summary", { today: todayAtRequest, tasks: payload });
     if (requestId !== latestRequest.current) return; // 더 나중 요청이 있으면 버린다
     if (result.ok) {
       setPhase({

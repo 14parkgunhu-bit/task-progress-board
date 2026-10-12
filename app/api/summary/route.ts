@@ -1,12 +1,13 @@
 // Design Ref: §4.3 POST /api/summary — 진행판 전체 요약 받기 (서버 전용)
-// 순서: 입력 검사 → (업무 0건이면 AI 없이 기본 요약) → 서버가 직접 계산한 기본 요약(정답)
+// 순서: 접근 코드 → 입력 검사 → (업무 0건이면 AI 없이 기본 요약, 횟수 차감 없음)
+//      → 서버가 직접 계산한 기본 요약(정답) → 호출 제한(1회 차감)
 //      → AI 호출(15초, 재시도 1회) → 형식·사실 검사 → 응답
 // AI 관련 실패(시간 초과·오류·검증 실패)는 오류 대신 200 + 기본 요약(source: "fallback")으로 응답한다.
-// (접근 코드·호출 제한은 PLAN 작업 26~27에서 이 앞에 들어온다)
 import { checkSummary } from "@/lib/check-summary.ts";
 import { isValidDateString } from "@/lib/dates.ts";
 import { MAX_STEPS_PER_TASK, MAX_TASK_TITLE_LENGTH, MAX_TASKS } from "@/lib/limits.ts";
 import { askAi, hasApiKey } from "@/lib/server/ai.ts";
+import { checkAccessCode, consumeRateLimit } from "@/lib/server/guard.ts";
 import { errorResponse, isAcceptableToday, okResponse, readJson } from "@/lib/server/http.ts";
 import { buildSummaryPrompt } from "@/lib/server/prompts.ts";
 import { buildBasicSummary, summaryFacts, viewsFromCounts, type SummaryTaskInput } from "@/lib/summary.ts";
@@ -31,6 +32,9 @@ function parseTask(value: unknown): SummaryTaskInput | null {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const denied = checkAccessCode(request);
+  if (denied) return denied;
+
   const body = await readJson(request, 200_000);
   if (typeof body !== "object" || body === null) return errorResponse("INVALID_INPUT");
   const raw = body as Record<string, unknown>;
@@ -54,6 +58,8 @@ export async function POST(request: Request): Promise<Response> {
   if (tasks.length === 0) return okResponse({ source: "basic", lines: expected });
 
   if (!hasApiKey()) return errorResponse("SERVER_CONFIG");
+  const limited = consumeRateLimit(request);
+  if (limited) return limited;
 
   const result = await askAi({
     label: "summary",

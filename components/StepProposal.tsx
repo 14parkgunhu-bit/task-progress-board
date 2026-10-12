@@ -9,11 +9,13 @@ import { useRef, useState } from "react";
 import type { ProposalStepInput } from "@/lib/board.ts";
 import { postJson } from "@/lib/client/api.ts";
 import { formatMonthDay } from "@/lib/dates.ts";
-import { MAX_STEPS_PER_TASK } from "@/lib/limits.ts";
+import { MANUAL_STEP_INITIAL_INPUTS, MAX_STEPS_PER_TASK } from "@/lib/limits.ts";
 import type { Task } from "@/lib/types.ts";
 import { validateStepDueDate, validateStepTitle } from "@/lib/validate-input.ts";
 import type { StepsResponse } from "@/lib/validate-steps.ts";
 import type { BoardActions } from "@/hooks/useBoard.ts";
+import AiErrorNotice from "./AiErrorNotice";
+import ManualStepInput from "./ManualStepInput";
 
 type Row = { title: string; dueDate: string; originalTitle: string; originalDueDate: string };
 
@@ -22,7 +24,7 @@ type Phase =
   | { kind: "loading" }
   | { kind: "proposal"; rows: Row[]; revision: number; revealed: boolean; choosing: boolean }
   | { kind: "needInfo"; question: string }
-  | { kind: "error"; message: string };
+  | { kind: "error"; code: string; message: string; retryAfterSec?: number };
 
 type Props = {
   task: Task;
@@ -49,12 +51,11 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
     const result = await postJson<StepsResponse>(
       "/api/steps",
       { title: task.title, dueDate: task.dueDate, memo: task.memo, today },
-      null,
     );
     // 더 나중에 보낸 요청이 있으면 이 응답은 버린다
     if (requestId !== latestRequest.current) return;
     if (!result.ok) {
-      setPhase({ kind: "error", message: result.message });
+      setPhase({ kind: "error", code: result.code, message: result.message, retryAfterSec: result.retryAfterSec });
       return;
     }
     if (result.data.status === "need_more_info") {
@@ -108,18 +109,31 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
   }
 
   if (phase.kind === "error") {
+    // PLAN 작업 25: 오류 안내 + [다시 시도] + 대체 수단(직접 입력칸 3개)
+    const remainingSlots = MAX_STEPS_PER_TASK - task.steps.length;
     return (
-      <div className={panelClass} role="alert">
-        <p className="text-red-700 dark:text-red-300">{phase.message}</p>
-        <div className="flex gap-2">
-          <button type="button" className={primaryClass} onClick={request} disabled={overdue}>
-            다시 시도
-          </button>
-          <button type="button" className={buttonClass} onClick={close}>
-            닫기
-          </button>
-        </div>
-      </div>
+      <AiErrorNotice
+        code={phase.code}
+        message={phase.message}
+        retryAfterSec={phase.retryAfterSec}
+        onRetry={overdue ? undefined : request}
+        onClose={close}
+      >
+        {remainingSlots > 0 && (
+          <ManualStepInput
+            title="AI 없이 할 일 직접 입력"
+            initialCount={MANUAL_STEP_INITIAL_INPUTS}
+            maxAddable={remainingSlots}
+            today={today}
+            taskDueDate={task.dueDate}
+            onCancel={close}
+            onSave={(inputs) => {
+              actions.addManualSteps(task.id, inputs);
+              close();
+            }}
+          />
+        )}
+      </AiErrorNotice>
     );
   }
 

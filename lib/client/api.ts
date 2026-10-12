@@ -1,5 +1,7 @@
 // Design Ref: §4·§6 — 브라우저 전용: 서버 API 호출
 // 서버 오류(`{ error: { code, message } }`)와 네트워크 오류를 한 가지 형태로 정리해 돌려준다.
+// 접근 코드가 저장돼 있으면 x-access-code 헤더로 붙인다. (DESIGN 4.1)
+import { getAccessCode } from "./access-code-store.ts";
 
 export type ApiFailure = {
   ok: false;
@@ -15,9 +17,9 @@ export type ApiResult<T> = { ok: true; data: T } | ApiFailure;
 export async function postJson<T>(
   path: string,
   body: unknown,
-  accessCode: string | null,
   timeoutMs = 45_000,
 ): Promise<ApiResult<T>> {
+  const accessCode = getAccessCode();
   let response: Response;
   try {
     response = await fetch(path, {
