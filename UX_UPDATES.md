@@ -1,6 +1,6 @@
 # 업무 진행판 — 승인된 UX 개선 최종 확인
 
-2026-10-12 · 경로: `C:\Users\14par\OneDrive\바탕 화면\myapp` · 브랜치: `feature/board-ux` · HEAD: `bb98a3c`
+2026-10-12 · 경로: 프로젝트 루트(`myapp`) · 브랜치: `feature/board-ux` · HEAD: `bb98a3c`
 
 ## 구현 완료
 
