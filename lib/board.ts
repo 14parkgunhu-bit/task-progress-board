@@ -62,3 +62,155 @@ export function parseBoardData(raw: unknown): BoardData | null {
     tasks: raw.tasks,
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+// 진행판 조작 (순수 함수) — 원본을 바꾸지 않고 새 진행판을 돌려준다.
+// 업무 내용(업무명·마감일·메모·할 일·체크)이 바뀌면 그 업무의 revision과 보드 revision을 함께 올린다.
+// 늦게 도착한 AI 응답이 사용자의 수정을 덮어쓰지 않게 판단하는 기준이다. (PRD 5장 AI 응답 반영 규칙)
+// ─────────────────────────────────────────────────────────────
+
+/** 새 ID (브라우저·Node 모두 지원하는 crypto.randomUUID) */
+export function newId(): string {
+  return globalThis.crypto.randomUUID();
+}
+
+/** 업무를 더 추가할 수 있는지 (최대 100건) */
+export function canAddTask(board: BoardData): boolean {
+  return board.tasks.length < MAX_TASKS;
+}
+
+/** 이 업무에 할 일을 count개 더 넣을 수 있는지 (최대 50개) */
+export function canAddSteps(task: Task, count = 1): boolean {
+  return task.steps.length + count <= MAX_STEPS_PER_TASK;
+}
+
+/** 업무 하나를 고친다. 대상이 없으면 원래 진행판을 그대로 돌려준다. */
+function modifyTask(
+  board: BoardData,
+  taskId: string,
+  change: (task: Task) => Task,
+  now: string,
+): BoardData {
+  let changed = false;
+  const tasks = board.tasks.map((task) => {
+    if (task.id !== taskId) return task;
+    changed = true;
+    return { ...change(task), revision: task.revision + 1, updatedAt: now };
+  });
+  return changed ? { ...board, revision: board.revision + 1, tasks } : board;
+}
+
+/** 업무 등록 (등록 순서 = 배열 끝에 추가). 상한이면 그대로 돌려준다. */
+export function addTask(
+  board: BoardData,
+  input: { title: string; dueDate: string; memo: string },
+  now: string,
+  id: string = newId(),
+): BoardData {
+  if (!canAddTask(board)) return board;
+  const task: Task = { id, ...input, steps: [], revision: 0, createdAt: now, updatedAt: now };
+  return { ...board, revision: board.revision + 1, tasks: [...board.tasks, task] };
+}
+
+/** 업무명·마감일·메모 수정 */
+export function updateTask(
+  board: BoardData,
+  taskId: string,
+  input: { title: string; dueDate: string; memo: string },
+  now: string,
+): BoardData {
+  return modifyTask(board, taskId, (task) => ({ ...task, ...input }), now);
+}
+
+/** 업무 삭제 */
+export function deleteTask(board: BoardData, taskId: string): BoardData {
+  const tasks = board.tasks.filter((task) => task.id !== taskId);
+  return tasks.length === board.tasks.length
+    ? board
+    : { ...board, revision: board.revision + 1, tasks };
+}
+
+/** 사람이 입력한 할 일 하나 */
+export type ManualStepInput = { title: string; dueDate?: string };
+
+/**
+ * 할 일 직접 추가 (여러 개 한 번에). 제목이 빈 칸은 무시한다.
+ * 상한(50개)을 넘으면 아무것도 넣지 않고 그대로 돌려준다.
+ */
+export function addManualSteps(
+  board: BoardData,
+  taskId: string,
+  inputs: readonly ManualStepInput[],
+  now: string,
+  makeId: () => string = newId,
+): BoardData {
+  const filled = inputs
+    .map((input) => ({ title: input.title.trim(), dueDate: input.dueDate || undefined }))
+    .filter((input) => input.title !== "");
+  const task = board.tasks.find((item) => item.id === taskId);
+  if (!task || filled.length === 0 || !canAddSteps(task, filled.length)) return board;
+  const steps: Step[] = filled.map((input) => ({
+    id: makeId(),
+    title: input.title,
+    ...(input.dueDate ? { dueDate: input.dueDate } : {}),
+    done: false,
+    source: "manual",
+    edited: false,
+  }));
+  return modifyTask(board, taskId, (item) => ({ ...item, steps: [...item.steps, ...steps] }), now);
+}
+
+/** 할 일 제목·권장 완료일 수정. AI 제안이었던 할 일을 고치면 edited = true (PRD 3장 지표) */
+export function updateStep(
+  board: BoardData,
+  taskId: string,
+  stepId: string,
+  input: ManualStepInput,
+  now: string,
+): BoardData {
+  const title = input.title.trim();
+  const dueDate = input.dueDate || undefined;
+  return modifyTask(
+    board,
+    taskId,
+    (task) => ({
+      ...task,
+      steps: task.steps.map((step) => {
+        if (step.id !== stepId) return step;
+        const changed = step.title !== title || step.dueDate !== dueDate;
+        const { dueDate: _old, ...rest } = step;
+        void _old;
+        return {
+          ...rest,
+          title,
+          ...(dueDate ? { dueDate } : {}),
+          edited: step.edited || (step.source === "ai" && changed),
+        };
+      }),
+    }),
+    now,
+  );
+}
+
+/** 할 일 체크/해제 */
+export function toggleStep(board: BoardData, taskId: string, stepId: string, now: string): BoardData {
+  return modifyTask(
+    board,
+    taskId,
+    (task) => ({
+      ...task,
+      steps: task.steps.map((step) => (step.id === stepId ? { ...step, done: !step.done } : step)),
+    }),
+    now,
+  );
+}
+
+/** 할 일 삭제 */
+export function deleteStep(board: BoardData, taskId: string, stepId: string, now: string): BoardData {
+  return modifyTask(
+    board,
+    taskId,
+    (task) => ({ ...task, steps: task.steps.filter((step) => step.id !== stepId) }),
+    now,
+  );
+}
