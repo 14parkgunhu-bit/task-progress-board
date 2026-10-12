@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 업무 진행판
 
-## Getting Started
+행정 업무를 **할 일 단위로 등록**하고 **진행도를 한눈에** 보여주는 개인용 웹앱이에요. AI가 업무를 단계별 할 일로 나눠 주고, 진행판 전체를 보고용 5줄 요약으로 만들어 줘요.
 
-First, run the development server:
+- **데이터는 내 브라우저에만 저장**돼요(서버·DB 없음).
+- AI를 쓸 때만 입력 내용이 앱 서버를 거쳐 **해외 AI 제공자(OpenAI)로 전송**돼요. 개인정보와 비공개·대외비 문서 내용은 입력하지 마세요.
+- Next.js 16 · React 19 · TypeScript · Tailwind CSS 4
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 주요 기능
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| 기능 | 설명 |
+|---|---|
+| 업무 등록·진행판 | 업무명·마감일·메모를 등록하고 할 일을 체크하면 진행률(%)과 상태(정상·임박·지연·완료)가 자동으로 바뀌어요. |
+| AI 단계 나누기 | 업무를 3~7개의 할 일로 나눠 **제안**해요. 고친 뒤 [저장]을 눌러야 반영돼요. |
+| AI 진행 요약 | 진행판 전체를 5줄 이내로 요약해요. 앱이 계산한 값과 한 줄씩 대조해서 맞는 것만 보여줘요. |
+| 안전장치 | AI가 실패해도 직접 입력·기본 요약으로 이어서 쓸 수 있고, 늦게 온 AI 응답이 내가 고친 내용을 덮어쓰지 않아요. |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 실행 방법
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. 패키지 설치
+   ```bash
+   npm install
+   ```
+2. 프로젝트 루트에 `.env` 파일을 만들고 값을 직접 입력하세요. (`.env`는 Git에 올라가지 않아요. 값을 채팅이나 문서에 적지 마세요.)
 
-## Learn More
+   | 이름 | 필수 | 설명 |
+   |---|---|---|
+   | `OPENAI_API_KEY` | 필수 | AI 호출용 키 (서버에서만 사용, 브라우저에는 노출되지 않아요) |
+   | `APP_ACCESS_CODE` | 배포할 때 필수 | 접근 코드. **영어·숫자 무작위 16자 이상**. 개발 중에 비워 두면 검사를 건너뛰고, 배포 환경에서 비어 있으면 AI 요청이 모두 막혀요. |
+   | `OPENAI_MODEL` | 선택 | 쓸 AI 모델 이름 (기본값 `gpt-4.1-mini`) |
 
-To learn more about Next.js, take a look at the following resources:
+3. 개발 서버 실행 후 http://localhost:3000 에 접속 (3000번이 사용 중이면 터미널에 나온 주소를 쓰세요.)
+   ```bash
+   npm run dev
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+접근 코드를 설정했다면 화면 오른쪽 위 **[접근 코드 입력]** 에 같은 값을 넣어야 AI 기능이 동작해요.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 자주 쓰는 명령
 
-## Deploy on Vercel
+| 명령 | 하는 일 |
+|---|---|
+| `npm run dev` | 개발 서버 실행 |
+| `npm test` | 계산·검증 함수 자동 점검 (Node 내장 테스트) |
+| `npm run lint` | 코드 검사 |
+| `npm run build` | 배포용 빌드 (오류가 없는지 확인) |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 폴더 구조
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| 위치 | 내용 |
+|---|---|
+| `app/` | 화면(`page.tsx`)과 서버 창구(`api/steps`, `api/summary`) |
+| `components/` | 화면 조각 (업무 폼, 업무 카드, 요약 패널 등) |
+| `hooks/` | 화면 상태 관리 (`useBoard`) |
+| `lib/` | 진행률·상태·요약·검증 같은 규칙 (순수 함수) |
+| `lib/client/` | 브라우저 전용 (저장소, 서버 호출) |
+| `lib/server/` | 서버 전용 (AI 호출, 접근 코드, 호출 제한) |
+| `tests/` | 자동 점검 |
+
+## 문서
+
+| 문서 | 내용 |
+|---|---|
+| [PRD.md](PRD.md) | 기획서 — 무엇을 왜 만드는지, 규칙과 범위 |
+| [PLAN.md](PLAN.md) | 실행 계획 — 작업 순서와 성공 기준 |
+| [DESIGN.md](DESIGN.md) | 설계 — 화면·데이터 흐름·API·오류 처리·보안 |
+| [CHECK.md](CHECK.md) | 점검 결과 — 통과/실패와 남은 보완 항목 |
+| [CLAUDE.md](CLAUDE.md) | AI 도우미(Claude)와 일할 때의 프로젝트 규칙 |
+
+## 배포 (Vercel)
+
+- Vercel 환경변수 화면에 `OPENAI_API_KEY`와 `APP_ACCESS_CODE`를 직접 입력하세요. GitHub·Vercel 같은 개발 도구용 토큰은 넣지 않아요.
+- `.vercelignore`가 배포할 때 `.env*` 파일과 개발용 폴더가 올라가지 않게 막아 줘요.
+- 배포 전에 [CHECK.md](CHECK.md)의 **P1(배포 전 필수)** 항목을 확인하세요.
