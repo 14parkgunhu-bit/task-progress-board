@@ -79,7 +79,7 @@
                 │ POST /api/steps                          │ POST /api/summary
 ┌───────────────▼──────────────── 서버 (Vercel) ───────────▼──────────────┐
 │ app/api/steps/route.ts            app/api/summary/route.ts               │
-│   └ lib/server/guard (접근 코드 → 호출 제한 → 입력 검사)                  │
+│   └ lib/server/guard (접근 코드 → 입력 검사 → 호출 제한)                  │
 │   └ lib/server/ai (fetch, 15초 제한, 재시도 1회)                         │
 │   └ lib/validate-steps / lib/check-summary (형식·사실 검사)              │
 └───────────────────────────────┬─────────────────────────────────────────┘
@@ -371,7 +371,7 @@ type TaskView = {
 |---|---|
 | API 키 | `process.env.OPENAI_API_KEY`는 `lib/server/ai.ts`에서만 읽는다. 파일 맨 위 `import 'server-only'`. `NEXT_PUBLIC_` 금지. |
 | 접근 코드 | 서버 환경변수 `APP_ACCESS_CODE`. 요청 헤더 `x-access-code`와 `node:crypto`의 `timingSafeEqual`로 비교. 개발 환경에서 값이 없으면 검사를 건너뛰고, 배포 환경에서 값이 없으면 모든 AI 요청을 막는다(`SERVER_CONFIG`). |
-| 호출 제한 | `lib/server/rate-limit.ts` — 접속자 IP(`x-forwarded-for` 첫 값)별 메모리 계수기, 1분 5회·최근 24시간 50회. 검사 순서는 접근 코드 → 입력 검사 → 호출 제한이며, 실제로 AI를 부를 요청만 1회로 센다(재시도 포함 1회). 서버 인스턴스마다 따로 세어질 수 있음 → 접근 코드 + OpenAI 월 사용 한도로 보완. |
+| 호출 제한 | `lib/rate-limit.ts`(순수 로직) + `lib/server/guard.ts` — 접속자 IP(`x-forwarded-for` 첫 값, IPv6는 /64 단위)별 메모리 계수기, 1분 5회·최근 24시간 50회. 틀린 접근 코드는 10분 10회까지(무작위 대입 방지). 검사 순서는 접근 코드 → 입력 검사 → 호출 제한이며, 실제로 AI를 부를 요청만 1회로 센다(재시도 포함 1회). 서버 인스턴스마다 따로 세어질 수 있음 → 접근 코드 + OpenAI 월 사용 한도로 보완. |
 | 입력 길이 | 업무명 50자·메모 1,000자·업무 100건·할 일 50개 — 화면과 서버 양쪽에서 같은 상수로 검사. |
 | 로그 | 서버 로그에는 오류 코드·소요 시간만 남기고 업무명·메모 본문은 남기지 않는다. |
 | 저장 위치 | 업무 데이터는 브라우저 `localStorage`에만. 서버·DB 저장 없음. |
@@ -477,7 +477,7 @@ lib/
   server/ai.ts            OpenAI 호출 (15초, 재시도 1회)
   server/prompts.ts       단계·요약 프롬프트
   server/guard.ts         접근 코드 + 호출 제한 + 오류 응답
-  server/rate-limit.ts    IP별 계수기
+  rate-limit.ts           호출 제한·틀린 접근 코드 제한 (순수 로직, 서버 guard가 사용)
 tests/                    (새로) lib 단위 점검
 package.json              (수정) "test": "node --test tests/"
 tsconfig.json             (수정) allowImportingTsExtensions
@@ -516,3 +516,4 @@ tsconfig.json             (수정) allowImportingTsExtensions
 |---|---|---|---|
 | 0.1 | 2026-10-06 | 첫 작성 (설계안 C, 추가 기술 없음) | 박건후 |
 | 0.2 | 2026-10-06 | design-validator 검토 17건 반영 (요약 줄 형식·상한·저장 방식·오류 처리 등) | 박건후 |
+| 0.3 | 2026-10-12 | 보안 점검(security-architect) 반영: 틀린 접근 코드 제한, IPv6 /64, 응답 길이 상한, 보안 헤더, 문서·코드 불일치 수정 | 박건후 |

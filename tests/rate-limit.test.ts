@@ -43,3 +43,26 @@ test("오래된 기록 정리", () => {
   pruneRateLimitStore(store, 25 * HOUR);
   assert.deepEqual([...store.keys()], ["new"]);
 });
+
+test("틀린 접근 코드: 10분에 10회를 넘으면 막고, 확인만으로는 횟수가 늘지 않는다 (SEC-001)", async () => {
+  const { ACCESS_FAILURE_RULES, checkLimit, recordHit } = await import("../lib/rate-limit.ts");
+  const store: RateLimitStore = new Map();
+  for (let i = 0; i < 10; i += 1) {
+    assert.deepEqual(checkLimit(store, "ip", i * 1000, ACCESS_FAILURE_RULES), { ok: true });
+    recordHit(store, "ip", i * 1000);
+  }
+  const blocked = checkLimit(store, "ip", 10_000, ACCESS_FAILURE_RULES);
+  assert.deepEqual(blocked, { ok: false, retryAfterSec: 590 }); // 첫 실패(0초)로부터 10분
+  assert.equal(store.get("ip")?.length, 10);
+  assert.deepEqual(checkLimit(store, "ip", 10 * MINUTE, ACCESS_FAILURE_RULES), { ok: true });
+});
+
+test("접속자 키: IPv4 그대로, IPv4 섞인 IPv6는 IPv4로, IPv6는 /64로 묶는다 (SEC-002)", async () => {
+  const { clientKeyFromIp } = await import("../lib/rate-limit.ts");
+  assert.equal(clientKeyFromIp(" 203.0.113.7 "), "203.0.113.7");
+  assert.equal(clientKeyFromIp("::ffff:203.0.113.7"), "203.0.113.7");
+  assert.equal(clientKeyFromIp("2001:db8:abcd:12:1::5"), "2001:db8:abcd:12::/64");
+  assert.equal(clientKeyFromIp("2001:0db8:abcd:0012:ffff:1:2:3"), "2001:db8:abcd:12::/64");
+  assert.equal(clientKeyFromIp("[2001:db8::1]"), "2001:db8:0:0::/64");
+  assert.equal(clientKeyFromIp(""), "unknown");
+});

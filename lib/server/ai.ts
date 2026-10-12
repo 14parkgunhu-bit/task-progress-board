@@ -3,7 +3,7 @@ import "server-only";
 // Design Ref: §6.3·§7 — 서버 전용: OpenAI 호출 (15초 제한, 재시도 1회)
 // API 키는 여기서만 읽는다. 로그에는 오류 코드·시도 횟수·소요 시간만 남기고, 업무명·메모 본문은 남기지 않는다.
 import { isRetryableStatus, runWithRetry, type AiErrorCode, type RetryResult } from "../ai-retry.ts";
-import { AI_TIMEOUT_MS } from "../limits.ts";
+import { AI_MAX_COMPLETION_TOKENS, AI_TIMEOUT_MS } from "../limits.ts";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 /** 기본 모델 — 빠르고 JSON 응답을 지원한다. 서버 환경변수 OPENAI_MODEL로 바꿀 수 있다. */
@@ -44,6 +44,7 @@ export async function askAi<T>(options: {
           model,
           messages: options.messages,
           temperature: 0.2,
+          max_completion_tokens: AI_MAX_COMPLETION_TOKENS,
           ...(options.json ? { response_format: { type: "json_object" } } : {}),
         }),
         signal: AbortSignal.timeout(AI_TIMEOUT_MS),

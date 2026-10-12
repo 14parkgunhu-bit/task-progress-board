@@ -29,7 +29,16 @@ type Props = {
   today: string;
 };
 
-const SOURCE_LABEL: Record<SummarySource | "local", string> = {
+/** 서버 응답의 형태를 확인한다. 예상과 다르면 null (보안 점검 SEC-008) */
+function toSummaryResponse(data: unknown): SummaryResponse | null {
+  if (typeof data !== "object" || data === null) return null;
+  const value = data as Record<string, unknown>;
+  const sourceOk = value.source === "ai" || value.source === "fallback" || value.source === "basic";
+  const linesOk = Array.isArray(value.lines) && value.lines.every((line) => typeof line === "string");
+  return sourceOk && linesOk ? { source: value.source as SummarySource, lines: value.lines as string[] } : null;
+}
+
+const SOURCE_LABEL:Record<SummarySource | "local", string> = {
   ai: "AI 요약 (앱이 계산한 값과 대조를 통과함)",
   fallback: "AI 요약을 받지 못해 기본 요약을 보여줍니다.",
   basic: "업무가 없어 기본 요약을 보여줍니다.",
@@ -54,23 +63,25 @@ export default function SummaryPanel({ views, tasks, revision, today }: Props) {
     }));
     setCopyState("idle");
     setPhase({ kind: "loading" });
-    const result = await postJson<SummaryResponse>("/api/summary", { today: todayAtRequest, tasks: payload });
+    const result = await postJson<unknown>("/api/summary", { today: todayAtRequest, tasks: payload });
     if (requestId !== latestRequest.current) return; // 더 나중 요청이 있으면 버린다
-    if (result.ok) {
+    const data = result.ok ? toSummaryResponse(result.data) : null;
+    if (data) {
       setPhase({
         kind: "result",
-        lines: result.data.lines,
-        source: result.data.source,
+        lines: data.lines,
+        source: data.source,
         revision: revisionAtRequest,
         today: todayAtRequest,
       });
     } else {
-      // AI를 부르지 못한 경우(네트워크·입력·서버 설정 등)에도 브라우저에서 같은 규칙으로 기본 요약을 만든다
+      // AI를 부르지 못한 경우(네트워크·입력·서버 설정·형식이 틀린 응답 등)에도 브라우저에서 같은 규칙으로 기본 요약을 만든다
+      const reason = result.ok ? "AI 응답 형식이 올바르지 않습니다." : result.message;
       setPhase({
         kind: "result",
         lines: buildBasicSummary(views),
         source: "local",
-        note: `${result.message} 기본 요약을 대신 보여줍니다.`,
+        note: `${reason} 기본 요약을 대신 보여줍니다.`,
         revision: revisionAtRequest,
         today: todayAtRequest,
       });

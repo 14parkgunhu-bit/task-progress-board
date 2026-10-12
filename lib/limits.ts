@@ -50,3 +50,7 @@ export const AI_MAX_ATTEMPTS = 2;
 export const RATE_LIMIT_PER_MINUTE = 5;
 /** 접속자 한 명이 최근 24시간 동안 부를 수 있는 AI 요청 수 */
 export const RATE_LIMIT_PER_DAY = 50;
+/** 틀린 접근 코드를 10분 동안 시도할 수 있는 횟수 (무작위 대입 방지, 보안 점검 SEC-001) */
+export const ACCESS_CODE_FAILURES_PER_10_MIN = 10;
+/** AI 응답 최대 길이(토큰) — 프롬프트 주입으로 긴 출력을 유도해 비용을 늘리지 못하게 (보안 점검 SEC-004) */
+export const AI_MAX_COMPLETION_TOKENS = 800;

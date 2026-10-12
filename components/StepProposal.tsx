@@ -35,7 +35,30 @@ type Props = {
   onEditTask: () => void;
 };
 
-const buttonClass = "rounded-md border border-zinc-300 px-3 py-1 text-sm disabled:opacity-40 dark:border-zinc-600";
+/** 서버 응답의 형태를 확인한다. 예상과 다르면 null (SEC-008) */
+function toStepsResponse(data: unknown): StepsResponse | null {
+  if (typeof data !== "object" || data === null) return null;
+  const value = data as Record<string, unknown>;
+  if (value.status === "need_more_info" && typeof value.question === "string") {
+    return { status: "need_more_info", question: value.question };
+  }
+  if (
+    value.status === "ok" &&
+    Array.isArray(value.steps) &&
+    value.steps.every(
+      (step) =>
+        typeof step === "object" &&
+        step !== null &&
+        typeof (step as Record<string, unknown>).title === "string" &&
+        typeof (step as Record<string, unknown>).dueDate === "string",
+    )
+  ) {
+    return { status: "ok", steps: value.steps as { title: string; dueDate: string }[] };
+  }
+  return null;
+}
+
+const buttonClass ="rounded-md border border-zinc-300 px-3 py-1 text-sm disabled:opacity-40 dark:border-zinc-600";
 const primaryClass =
   "rounded-md bg-violet-700 px-3 py-1 text-sm font-medium text-white disabled:opacity-40 hover:bg-violet-800";
 
@@ -48,7 +71,7 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
     const requestId = ++latestRequest.current;
     const revisionAtRequest = task.revision;
     setPhase({ kind: "loading" });
-    const result = await postJson<StepsResponse>(
+    const result = await postJson<unknown>(
       "/api/steps",
       { title: task.title, dueDate: task.dueDate, memo: task.memo, today },
     );
@@ -58,8 +81,14 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
       setPhase({ kind: "error", code: result.code, message: result.message, retryAfterSec: result.retryAfterSec });
       return;
     }
-    if (result.data.status === "need_more_info") {
-      setPhase({ kind: "needInfo", question: result.data.question });
+    const data = toStepsResponse(result.data);
+    if (!data) {
+      // 프록시 오류 페이지 등 예상과 다른 응답 (보안 점검 SEC-008)
+      setPhase({ kind: "error", code: "AI_INVALID", message: "AI 응답 형식이 올바르지 않습니다." });
+      return;
+    }
+    if (data.status === "need_more_info") {
+      setPhase({ kind: "needInfo", question: data.question });
       return;
     }
     setPhase({
@@ -67,7 +96,7 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
       revision: revisionAtRequest,
       revealed: false,
       choosing: false,
-      rows: result.data.steps.map((step) => ({
+      rows: data.steps.map((step) => ({
         title: step.title,
         dueDate: step.dueDate,
         originalTitle: step.title,

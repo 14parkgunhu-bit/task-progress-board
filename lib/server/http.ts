@@ -51,11 +51,19 @@ export function okResponse(body: unknown): Response {
   return Response.json(body, { headers: { "Cache-Control": "no-store" } });
 }
 
-/** 요청 본문을 JSON으로 읽는다. 크기가 너무 크거나 JSON이 아니면 null. */
+/**
+ * 요청 본문을 JSON으로 읽는다. 크기가 너무 크거나 JSON이 아니면 null.
+ * - Content-Type이 application/json이 아니면 읽지 않는다(다른 사이트의 단순 POST 차단 — SEC-007)
+ * - 선언된 크기가 크면 본문을 읽기 전에 거절하고, 읽은 뒤에도 바이트 수로 다시 확인한다(SEC-006)
+ */
 export async function readJson(request: Request, maxBytes = 64_000): Promise<unknown> {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().startsWith("application/json")) return null;
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
   try {
     const text = await request.text();
-    if (text.length > maxBytes) return null;
+    if (new TextEncoder().encode(text).length > maxBytes) return null;
     return JSON.parse(text);
   } catch {
     return null;
