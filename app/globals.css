@@ -24,3 +24,14 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* 손가락으로 쓰는 화면(휴대폰·태블릿)에서는 글자 버튼과 체크박스를 누르기 쉽게 키운다 */
+@media (pointer: coarse) {
+  button {
+    min-height: 2.25rem;
+  }
+  input[type="checkbox"] {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}

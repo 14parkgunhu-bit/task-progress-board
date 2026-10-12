@@ -74,7 +74,7 @@ export default function StepList({ task, today, actions }: Props) {
                 <label className="flex flex-1 items-center gap-2">
                   <input
                     type="checkbox"
-                    className="size-4"
+                    className="size-4 shrink-0"
                     checked={step.done}
                     onChange={() => actions.toggleStep(task.id, step.id)}
                   />
