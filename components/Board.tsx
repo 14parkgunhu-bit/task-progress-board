@@ -55,7 +55,7 @@ export default function Board() {
         </ul>
       )}
 
-      <SummaryPanel views={views} />
+      <SummaryPanel views={views} tasks={board.tasks} revision={board.revision} today={today} />
     </div>
   );
 }
