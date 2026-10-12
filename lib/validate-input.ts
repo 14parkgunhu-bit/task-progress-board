@@ -33,6 +33,11 @@ export function hasLineBreakOrControl(text: string): boolean {
   return CONTROL_CHARS.test(text);
 }
 
+/** 줄바꿈·탭 같은 제어 문자를 공백으로 바꾼다 (이전 버전에서 저장된 이름을 불러올 때만 쓴다) */
+export function replaceControlChars(text: string): string {
+  return text.replace(new RegExp(CONTROL_CHARS.source, "g"), " ");
+}
+
 /**
  * 한 줄짜리 이름 검사: 앞뒤 공백을 지운 뒤 1~max자, 줄바꿈·제어 문자 없음.
  * 화면 입력·저장 데이터·백업 복원·요약 API가 모두 이 기준을 쓴다.

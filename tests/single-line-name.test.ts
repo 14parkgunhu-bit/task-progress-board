@@ -69,3 +69,25 @@ test("요약 업무명 줄이기는 이모지를 반으로 자르지 않는다",
   const views = buildViews([makeTask("e", "2026-10-20", 0, 1, title)], "2026-10-12");
   assert.equal(views.length, 1);
 });
+
+test("이 브라우저에 예전에 저장된 탭 섞인 이름은 공백으로 바꿔 불러온다 (진행판 전체가 비지 않게)", async () => {
+  const { normalizeLegacyNames } = await import("../lib/board.ts");
+  const old = makeTask("t", "2026-10-20", 1, 2, "예산\t점검");
+  old.steps[1] = { ...old.steps[1], title: "자료\t확인하기" };
+  const stored = { schemaVersion: 1, revision: 2, tasks: [old, makeTask("u", "2026-10-21", 0, 1)] };
+  assert.equal(parseBoardData(stored), null); // 정리하지 않으면 전체가 거절된다
+  const loaded = parseBoardData(normalizeLegacyNames(JSON.parse(JSON.stringify(stored))));
+  assert.ok(loaded);
+  assert.equal(loaded?.tasks.length, 2);
+  assert.equal(loaded?.tasks[0].title, "예산 점검");
+  assert.equal(loaded?.tasks[0].steps[1].title, "자료 확인하기");
+  assert.equal(loaded?.tasks[0].steps[0].done, true); // 체크 상태 등 다른 값은 그대로
+  assert.equal(normalizeLegacyNames(null), null);
+});
+
+test("백업 복원은 정리하지 않고 탭 섞인 이름을 거절한다", async () => {
+  const { readBackup } = await import("../lib/backup.ts");
+  const board = { schemaVersion: 1, revision: 1, tasks: [makeTask("t", "2026-10-20", 0, 1, "예산\t점검")] };
+  const result = readBackup(JSON.stringify({ format: "task-board-backup", exportedAt: "2026-10-12T00:00:00.000Z", board }));
+  assert.equal(result.ok, false);
+});

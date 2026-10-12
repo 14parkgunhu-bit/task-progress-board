@@ -1,6 +1,6 @@
 // Design Ref: §2.2·§9 — 브라우저 전용: localStorage 읽기·쓰기
 // 서버에서는 import하지 않는다. 테스트는 가상 저장소로만 점검한다. 저장소를 쓸 수 없어도 앱이 깨지지 않게 모든 접근을 try/catch로 감싼다.
-import { createEmptyBoard, parseBoardData } from "../board.ts";
+import { createEmptyBoard, normalizeLegacyNames, parseBoardData } from "../board.ts";
 import type { BoardData } from "../types.ts";
 
 /** 저장 칸 이름 (형식 버전 1) */
@@ -46,7 +46,8 @@ export function loadBoard(): { board: BoardData; status: LoadStatus } {
 
   let parsed: BoardData | null = null;
   try {
-    parsed = parseBoardData(JSON.parse(raw));
+    // 이전 버전에서 저장된 이름 속 제어 문자는 공백으로 바꿔 불러온다 (갭 분석 새 항목 1)
+    parsed = parseBoardData(normalizeLegacyNames(JSON.parse(raw)));
   } catch {
     parsed = null;
   }

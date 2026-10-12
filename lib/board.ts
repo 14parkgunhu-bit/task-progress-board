@@ -10,7 +10,7 @@ import {
 } from "./limits.ts";
 import { BOARD_SCHEMA_VERSION } from "./types.ts";
 import type { BoardData, Step, Task } from "./types.ts";
-import { countChars, isSingleLineName } from "./validate-input.ts";
+import { countChars, isSingleLineName, replaceControlChars } from "./validate-input.ts";
 
 /** 문자열이고 글자 수가 min~max 안인지 (메모처럼 여러 줄을 허용하는 글) */
 function isTextWithin(value: unknown, min: number, max: number): value is string {
@@ -265,4 +265,35 @@ export function applyProposal(
     (item) => ({ ...item, steps: mode === "append" ? [...item.steps, ...steps] : steps }),
     now,
   );
+}
+
+/**
+ * 이전 버전에서 저장된 데이터 정리 (이 브라우저의 저장 데이터를 불러올 때만 쓴다 — 백업 복원에는 쓰지 않는다).
+ * 예전에는 업무명·할 일 제목의 탭 같은 제어 문자를 막지 않았으므로, 그런 이름이 하나 있다고
+ * 진행판 전체가 "깨진 데이터"로 처리되지 않게 공백으로 바꾼 뒤 검사한다. 그 밖의 값은 그대로 둔다.
+ */
+export function normalizeLegacyNames(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null || !Array.isArray((raw as { tasks?: unknown }).tasks)) return raw;
+  const fix = (value: unknown) => (typeof value === "string" ? replaceControlChars(value) : value);
+  const board = raw as { tasks: unknown[] };
+  return {
+    ...board,
+    tasks: board.tasks.map((task) => {
+      if (typeof task !== "object" || task === null) return task;
+      const item = task as { title?: unknown; steps?: unknown };
+      return {
+        ...item,
+        title: fix(item.title),
+        ...(Array.isArray(item.steps)
+          ? {
+              steps: item.steps.map((step) =>
+                typeof step === "object" && step !== null
+                  ? { ...step, title: fix((step as { title?: unknown }).title) }
+                  : step,
+              ),
+            }
+          : {}),
+      };
+    }),
+  };
 }
