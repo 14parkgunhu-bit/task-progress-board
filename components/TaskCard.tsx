@@ -7,6 +7,7 @@ import { STATUS_LABEL } from "@/lib/status.ts";
 import type { TaskView } from "@/lib/types.ts";
 import type { BoardActions } from "@/hooks/useBoard.ts";
 import StepList from "./StepList";
+import StepProposal from "./StepProposal";
 import TaskForm from "./TaskForm";
 import { STATUS_BADGE_CLASS, STATUS_BAR_CLASS, STATUS_BORDER_CLASS } from "./status-style";
 
@@ -80,17 +81,28 @@ export default function TaskCard({ view, today, actions }: Props) {
             <p className="whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-400">{task.memo}</p>
           )}
 
-          <StepList task={task} today={today} actions={actions} />
-
-          <div className="flex justify-end gap-3 border-t border-zinc-100 pt-2 text-sm dark:border-zinc-800">
-            <button type="button" className="text-zinc-600 hover:underline dark:text-zinc-400" onClick={() => setEditing(true)}>
-              수정
-            </button>
-            <button type="button" className="text-zinc-600 hover:text-red-600 hover:underline dark:text-zinc-400" onClick={handleDelete}>
-              삭제
-            </button>
-          </div>
         </>
+      )}
+
+      {/* 할 일·AI 제안은 업무를 수정하는 동안에도 유지한다(추가 입력 요청 → 메모 보충 → 다시 요청 흐름) */}
+      <StepList task={task} today={today} actions={actions} />
+      <StepProposal
+        task={task}
+        today={today}
+        dDay={dDay}
+        actions={actions}
+        onEditTask={() => setEditing(true)}
+      />
+
+      {!editing && (
+        <div className="flex justify-end gap-3 border-t border-zinc-100 pt-2 text-sm dark:border-zinc-800">
+          <button type="button" className="text-zinc-600 hover:underline dark:text-zinc-400" onClick={() => setEditing(true)}>
+            수정
+          </button>
+          <button type="button" className="text-zinc-600 hover:text-red-600 hover:underline dark:text-zinc-400" onClick={handleDelete}>
+            삭제
+          </button>
+        </div>
       )}
     </li>
   );

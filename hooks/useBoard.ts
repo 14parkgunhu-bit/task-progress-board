@@ -3,12 +3,14 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import {
   addManualSteps,
   addTask,
+  applyProposal,
   deleteStep,
   deleteTask,
   toggleStep,
   updateStep,
   updateTask,
   type ManualStepInput,
+  type ProposalStepInput,
 } from "@/lib/board.ts";
 import {
   getBoardSnapshot,
@@ -62,6 +64,11 @@ export function useBoard() {
     ),
     deleteStep: useCallback(
       (taskId: string, stepId: string) => updateBoard((b) => deleteStep(b, taskId, stepId, nowIso())),
+      [],
+    ),
+    applyProposal: useCallback(
+      (taskId: string, inputs: ProposalStepInput[], mode: "append" | "replace") =>
+        updateBoard((b) => applyProposal(b, taskId, inputs, mode, nowIso())),
       [],
     ),
   };

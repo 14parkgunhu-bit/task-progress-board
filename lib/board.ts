@@ -214,3 +214,41 @@ export function deleteStep(board: BoardData, taskId: string, stepId: string, now
     now,
   );
 }
+
+/** AI 제안을 반영할 때 한 줄 (edited: 사용자가 제안을 고쳤는지) */
+export type ProposalStepInput = { title: string; dueDate?: string; edited: boolean };
+
+/**
+ * AI 제안 반영 (PRD 5장 AI 응답 반영 규칙)
+ * - append(뒤에 추가): 기존 할 일(체크 포함)은 그대로 두고 뒤에 붙인다. 50개를 넘으면 반영하지 않는다.
+ * - replace(바꾸기): 기존 할 일을 제안으로 바꾼다. (체크 손실 확인은 화면에서 먼저 받는다)
+ * 반영된 할 일은 source = "ai".
+ */
+export function applyProposal(
+  board: BoardData,
+  taskId: string,
+  inputs: readonly ProposalStepInput[],
+  mode: "append" | "replace",
+  now: string,
+  makeId: () => string = newId,
+): BoardData {
+  const filled = inputs.filter((input) => input.title.trim() !== "");
+  const task = board.tasks.find((item) => item.id === taskId);
+  if (!task || filled.length === 0) return board;
+  if (mode === "append" && !canAddSteps(task, filled.length)) return board;
+  if (mode === "replace" && filled.length > MAX_STEPS_PER_TASK) return board;
+  const steps: Step[] = filled.map((input) => ({
+    id: makeId(),
+    title: input.title.trim(),
+    ...(input.dueDate ? { dueDate: input.dueDate } : {}),
+    done: false,
+    source: "ai",
+    edited: input.edited,
+  }));
+  return modifyTask(
+    board,
+    taskId,
+    (item) => ({ ...item, steps: mode === "append" ? [...item.steps, ...steps] : steps }),
+    now,
+  );
+}

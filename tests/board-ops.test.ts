@@ -91,3 +91,21 @@ test("할 일 삭제와 업무 삭제", () => {
   assert.equal(removed.tasks.length, 0);
   assert.equal(removed.revision, 1);
 });
+
+test("AI 제안 반영: 뒤에 추가는 기존 체크를 유지, 바꾸기는 교체, 출처는 ai", async () => {
+  const { applyProposal } = await import("../lib/board.ts");
+  const board: BoardData = { schemaVersion: 1, revision: 0, tasks: [makeTask("t", "2026-10-20", 1, 2)] };
+  const proposal = [
+    { title: "장소 예약하기", dueDate: "2026-10-14", edited: false },
+    { title: "체육관 예약하기", edited: true },
+  ];
+  const appended = applyProposal(board, "t", proposal, "append", NOW);
+  assert.equal(appended.tasks[0].steps.length, 4);
+  assert.equal(appended.tasks[0].steps[0].done, true); // 기존 체크 유지
+  assert.deepEqual(appended.tasks[0].steps.slice(2).map((s) => [s.source, s.edited]), [["ai", false], ["ai", true]]);
+  const replaced = applyProposal(board, "t", proposal, "replace", NOW);
+  assert.deepEqual(replaced.tasks[0].steps.map((s) => s.title), ["장소 예약하기", "체육관 예약하기"]);
+  assert.equal(replaced.tasks[0].revision, 1);
+  const nearFull: BoardData = { schemaVersion: 1, revision: 0, tasks: [makeTask("t", "2026-10-20", 0, 49)] };
+  assert.equal(applyProposal(nearFull, "t", proposal, "append", NOW), nearFull); // 50개 초과
+});
