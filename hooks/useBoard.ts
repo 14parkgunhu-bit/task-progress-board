@@ -17,6 +17,7 @@ import {
   getServerBoardSnapshot,
   subscribeBoard,
   updateBoard,
+  restoreBoard as restoreStoredBoard,
 } from "@/lib/client/board-store.ts";
 import {
   getServerTodaySnapshot,
@@ -24,6 +25,7 @@ import {
   subscribeToday,
 } from "@/lib/client/today-store.ts";
 import { buildViews } from "@/lib/status.ts";
+import type { BoardData } from "@/lib/types.ts";
 import type { TaskInput } from "@/lib/validate-input.ts";
 
 function nowIso(): string {
@@ -42,6 +44,7 @@ export function useBoard() {
   );
 
   const actions = {
+    restoreBoard: useCallback((incoming: BoardData, expectedRevision: number) => restoreStoredBoard(incoming, expectedRevision), []),
     addTask: useCallback((input: TaskInput) => updateBoard((b) => addTask(b, input, nowIso())), []),
     updateTask: useCallback(
       (taskId: string, input: TaskInput) => updateBoard((b) => updateTask(b, taskId, input, nowIso())),

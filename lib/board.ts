@@ -10,9 +10,9 @@ import {
 } from "./limits.ts";
 import { BOARD_SCHEMA_VERSION } from "./types.ts";
 import type { BoardData, Step, Task } from "./types.ts";
-import { countChars } from "./validate-input.ts";
+import { countChars, isSingleLineName } from "./validate-input.ts";
 
-/** 문자열이고 글자 수가 min~max 안인지 */
+/** 문자열이고 글자 수가 min~max 안인지 (메모처럼 여러 줄을 허용하는 글) */
 function isTextWithin(value: unknown, min: number, max: number): value is string {
   if (typeof value !== "string") return false;
   const length = countChars(value);
@@ -36,7 +36,7 @@ function isStep(value: unknown): value is Step {
   if (!isRecord(value)) return false;
   return (
     typeof value.id === "string" &&
-    isTextWithin(value.title, 1, MAX_STEP_TITLE_LENGTH) &&
+    isSingleLineName(value.title, MAX_STEP_TITLE_LENGTH) &&
     (value.dueDate === undefined || isValidDateString(value.dueDate)) &&
     typeof value.done === "boolean" &&
     (value.source === "ai" || value.source === "manual") &&
@@ -48,7 +48,7 @@ function isTask(value: unknown): value is Task {
   if (!isRecord(value)) return false;
   return (
     typeof value.id === "string" &&
-    isTextWithin(value.title, 1, MAX_TASK_TITLE_LENGTH) &&
+    isSingleLineName(value.title, MAX_TASK_TITLE_LENGTH) &&
     isValidDateString(value.dueDate) &&
     isTextWithin(value.memo, 0, MAX_MEMO_LENGTH) &&
     Array.isArray(value.steps) &&

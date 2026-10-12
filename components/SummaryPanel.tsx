@@ -11,7 +11,8 @@ import { buildBasicSummary, type SummaryTaskInput } from "@/lib/summary.ts";
 import type { Task, TaskView } from "@/lib/types.ts";
 
 type SummarySource = "ai" | "fallback" | "basic";
-type SummaryResponse = { source: SummarySource; lines: string[]; reason?: string };
+type SummaryFailureReason = "AI_TIMEOUT" | "AI_FAILED" | "AI_INVALID";
+type SummaryResponse = { source: SummarySource; lines: string[]; reason?: SummaryFailureReason };
 
 type Phase =
   | { kind: "idle" }
@@ -36,7 +37,11 @@ function toSummaryResponse(data: unknown): SummaryResponse | null {
   const value = data as Record<string, unknown>;
   const sourceOk = value.source === "ai" || value.source === "fallback" || value.source === "basic";
   const linesOk = Array.isArray(value.lines) && value.lines.every((line) => typeof line === "string");
-  return sourceOk && linesOk ? { source: value.source as SummarySource, lines: value.lines as string[] } : null;
+  const reason =
+    value.reason === "AI_TIMEOUT" || value.reason === "AI_FAILED" || value.reason === "AI_INVALID"
+      ? value.reason
+      : undefined;
+  return sourceOk && linesOk ? { source: value.source as SummarySource, lines: value.lines as string[], reason } : null;
 }
 
 const SOURCE_LABEL:Record<SummarySource | "local", string> = {
@@ -44,6 +49,12 @@ const SOURCE_LABEL:Record<SummarySource | "local", string> = {
   fallback: "AI 요약을 받지 못해 기본 요약을 보여줍니다.",
   basic: "업무가 없어 기본 요약을 보여줍니다.",
   local: "기본 요약을 보여줍니다.",
+};
+
+const FALLBACK_NOTE: Record<SummaryFailureReason, string> = {
+  AI_TIMEOUT: "AI 응답 시간 초과로 기본 요약을 보여줍니다.",
+  AI_FAILED: "AI 응답을 받지 못해 기본 요약을 보여줍니다.",
+  AI_INVALID: "AI 응답 형식 검증에 실패해 기본 요약을 보여줍니다.",
 };
 
 export default function SummaryPanel({ views, tasks, revision, today }: Props) {
@@ -80,6 +91,7 @@ export default function SummaryPanel({ views, tasks, revision, today }: Props) {
         kind: "result",
         lines: data.lines,
         source: data.source,
+        note: data.source === "fallback" && data.reason ? FALLBACK_NOTE[data.reason] : undefined,
         revision: revisionAtRequest,
         today: todayAtRequest,
       });

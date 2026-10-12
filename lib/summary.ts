@@ -5,10 +5,11 @@ import { SUMMARY_MAX_TASK_LINES, SUMMARY_TITLE_MAX_LENGTH } from "./limits.ts";
 import { calcProgress } from "./progress.ts";
 import { calcStatus, countByStatus, sortViews, STATUS_LABEL } from "./status.ts";
 import type { TaskStatus, TaskView } from "./types.ts";
+import { splitChars } from "./validate-input.ts";
 
-/** 업무명을 15자까지만 쓴다. 넘으면 앞 14자 + "…" (문자 단위로 셈) */
+/** 업무명을 15자까지만 쓴다. 넘으면 앞 14자 + "…" (화면에 보이는 글자 단위로 셈 — 이모지를 반으로 자르지 않는다) */
 export function shortenTitle(title: string): string {
-  const chars = [...title];
+  const chars = splitChars(title);
   if (chars.length <= SUMMARY_TITLE_MAX_LENGTH) return title;
   return `${chars.slice(0, SUMMARY_TITLE_MAX_LENGTH - 1).join("")}…`;
 }

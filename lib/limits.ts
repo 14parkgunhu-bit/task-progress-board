@@ -15,6 +15,12 @@ export const MAX_MEMO_LENGTH = 1000;
 /** 할 일 제목 최대 글자 수 (AI 제안·직접 입력 공통) */
 export const MAX_STEP_TITLE_LENGTH = 30;
 
+/** 브라우저에서 읽고 내보낼 백업 파일 최대 크기(바이트) */
+export const MAX_BACKUP_FILE_BYTES = 5 * 1024 * 1024;
+
+/** 새 업무 등록·수정 저장에 허용하는 가장 이른 마감일 */
+export const MIN_TASK_DUE_DATE = "2026-01-01";
+
 // ── 진행률·상태 (PRD 5장 공통 정의) ──
 /** 미완료 할 일이 남아 있을 때 표시할 수 있는 최대 진행률(%) */
 export const MAX_PROGRESS_WHEN_INCOMPLETE = 99;
@@ -26,6 +32,8 @@ export const DUE_SOON_DAYS = 3;
 export const AI_STEPS_MIN = 3;
 /** AI가 제안하는 할 일 최대 개수 */
 export const AI_STEPS_MAX = 7;
+/** AI의 추가 입력 요청 질문 최대 글자 수 (화면이 지나치게 길어지지 않게) */
+export const AI_QUESTION_MAX_LENGTH = 200;
 /** AI가 실패했을 때 처음 보여줄 직접 입력칸 개수 */
 export const MANUAL_STEP_INITIAL_INPUTS = 3;
 

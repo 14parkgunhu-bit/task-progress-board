@@ -1,14 +1,14 @@
 "use client";
 
 // Design Ref: §5.3 TaskForm — 업무 등록·수정 폼 (글자 수 표시, 업무명 50자·메모 1,000자, 마감일 필수)
-import { useId, useState } from "react";
-import { MAX_MEMO_LENGTH, MAX_TASK_TITLE_LENGTH } from "@/lib/limits.ts";
+import { useId, useRef, useState } from "react";
+import { MAX_MEMO_LENGTH, MAX_TASK_TITLE_LENGTH, MIN_TASK_DUE_DATE } from "@/lib/limits.ts";
 import { countChars, validateTaskInput, type TaskInput } from "@/lib/validate-input.ts";
 
 type Props = {
   initial?: TaskInput;
   submitLabel: string;
-  onSubmit: (value: TaskInput) => void;
+  onSubmit: (value: TaskInput) => boolean | void;
   onCancel?: () => void;
   /** 등록을 막아야 할 때(업무 100건 상한 등) 안내 문구 */
   disabledReason?: string;
@@ -20,6 +20,9 @@ export default function TaskForm({ initial, submitLabel, onSubmit, onCancel, dis
   const [value, setValue] = useState<TaskInput>(initial ?? EMPTY);
   const [triedSubmit, setTriedSubmit] = useState(false);
   const id = useId();
+  const titleRef = useRef<HTMLInputElement>(null);
+  const dueRef = useRef<HTMLInputElement>(null);
+  const memoRef = useRef<HTMLTextAreaElement>(null);
   const { ok, errors, value: cleaned } = validateTaskInput(value);
   const titleCount = countChars(value.title.trim());
   const memoCount = countChars(value.memo.trim());
@@ -33,8 +36,14 @@ export default function TaskForm({ initial, submitLabel, onSubmit, onCancel, dis
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setTriedSubmit(true);
-    if (!ok || disabledReason) return;
-    onSubmit(cleaned);
+    if (disabledReason) return;
+    if (!ok) {
+      // 오류가 있는 첫 칸으로 이동해 무엇을 고쳐야 하는지 바로 알 수 있게 한다.
+      const firstInvalid = errors.title ? titleRef : errors.dueDate ? dueRef : memoRef;
+      firstInvalid.current?.focus();
+      return;
+    }
+    if (onSubmit(cleaned) === false) return;
     if (!initial) {
       setValue(EMPTY);
       setTriedSubmit(false);
@@ -56,25 +65,30 @@ export default function TaskForm({ initial, submitLabel, onSubmit, onCancel, dis
           </span>
           <input
             id={`${id}-title`}
+            ref={titleRef}
             className={inputClass}
             value={value.title}
             onChange={(e) => setValue({ ...value, title: e.target.value })}
             placeholder="예: 가을 체육행사 준비"
             aria-invalid={Boolean(titleError)}
+            aria-describedby={titleError ? `${id}-title-error` : undefined}
           />
-          {titleError && <span className="text-red-600">{titleError}</span>}
+          {titleError && <span id={`${id}-title-error`} className="text-red-600">{titleError}</span>}
         </label>
         <label className="flex flex-col gap-1 text-sm sm:w-44" htmlFor={`${id}-due`}>
           <span className="font-medium">마감일</span>
           <input
             id={`${id}-due`}
+            ref={dueRef}
             type="date"
+            min={MIN_TASK_DUE_DATE}
             className={inputClass}
             value={value.dueDate}
             onChange={(e) => setValue({ ...value, dueDate: e.target.value })}
             aria-invalid={Boolean(dueError)}
+            aria-describedby={dueError ? `${id}-due-error` : undefined}
           />
-          {dueError && <span className="text-red-600">{dueError}</span>}
+          {dueError && <span id={`${id}-due-error`} className="text-red-600">{dueError}</span>}
         </label>
       </div>
       <label className="flex flex-col gap-1 text-sm" htmlFor={`${id}-memo`}>
@@ -86,13 +100,15 @@ export default function TaskForm({ initial, submitLabel, onSubmit, onCancel, dis
         </span>
         <textarea
           id={`${id}-memo`}
+          ref={memoRef}
           className={`${inputClass} min-h-16`}
           value={value.memo}
           onChange={(e) => setValue({ ...value, memo: e.target.value })}
           placeholder="업무 배경이나 조건을 적으면 AI가 할 일을 나눌 때 참고합니다. (공개 등급 정보만)"
           aria-invalid={Boolean(memoError)}
+          aria-describedby={memoError ? `${id}-memo-error` : undefined}
         />
-        {memoError && <span className="text-red-600">{memoError}</span>}
+        {memoError && <span id={`${id}-memo-error`} className="text-red-600">{memoError}</span>}
       </label>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {disabledReason && <span className="mr-auto text-sm text-red-600">{disabledReason}</span>}

@@ -209,22 +209,29 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
   }
 
   const rows = phase.rows;
-  const errors = rows.map(
-    (row) => validateStepTitle(row.title) ?? validateStepDueDate(row.dueDate, today, task.dueDate),
+  // PRD 직접 입력·제안 수정 규칙: 빈 제목 행은 검증·개수·저장에서 제외한다.
+  const filledRows = rows.filter((row) => row.title.trim() !== "");
+  const errors = rows.map((row) =>
+    row.title.trim() === ""
+      ? null
+      : validateStepTitle(row.title) ?? validateStepDueDate(row.dueDate, today, task.dueDate),
   );
   const hasError = errors.some(Boolean);
+  const canSave = filledRows.length > 0 && filledRows.length <= MAX_STEPS_PER_TASK && !hasError;
   const doneCount = task.steps.filter((step) => step.done).length;
-  const canAppend = task.steps.length + rows.length <= MAX_STEPS_PER_TASK;
+  const canAppend = task.steps.length + filledRows.length <= MAX_STEPS_PER_TASK;
 
   function setRows(next: Row[]) {
     if (phase.kind === "proposal") setPhase({ ...phase, rows: next, choosing: false });
   }
 
   function save(mode: "append" | "replace") {
+    // 저장 방식 선택 중에도 날짜·업무 내용이 바뀔 수 있으므로 다시 검사한다.
+    if (!canSave || (mode === "append" && !canAppend)) return;
     if (mode === "replace" && doneCount > 0) {
       if (!window.confirm(`체크한 할 일 ${doneCount}개가 사라집니다. 바꿀까요?`)) return;
     }
-    const inputs: ProposalStepInput[] = rows.map((row) => ({
+    const inputs: ProposalStepInput[] = filledRows.map((row) => ({
       title: row.title,
       dueDate: row.dueDate || undefined,
       edited: row.title.trim() !== row.originalTitle || row.dueDate !== row.originalDueDate,
@@ -236,6 +243,7 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
   return (
     <div className={panelClass}>
       <p className="font-medium">AI 제안 ({rows.length}개) — 고친 뒤 [저장]을 눌러야 반영됩니다.</p>
+      <p className="text-xs text-zinc-500">빈 제목은 저장하지 않습니다. 저장할 할 일 {filledRows.length}개.</p>
       {stale && <p className="text-xs text-amber-700 dark:text-amber-300">요청 이후 업무가 바뀌었습니다. 내용을 확인하고 저장하세요.</p>}
       <ol className="flex flex-col gap-2">
         {rows.map((row, index) => (
@@ -266,7 +274,7 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
               </button>
             </div>
             {errors[index] && <span className="text-xs text-red-600">{errors[index]}</span>}
-            {!errors[index] && row.dueDate && (
+            {row.title.trim() !== "" && !errors[index] && row.dueDate && (
               <span className="text-xs text-zinc-500">권장 완료 {formatMonthDay(row.dueDate)}</span>
             )}
           </li>
@@ -276,10 +284,10 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
       {phase.choosing ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-violet-200 pt-2 dark:border-violet-800">
           <span className="mr-auto">이미 할 일이 {task.steps.length}개 있습니다. 어떻게 저장할까요?</span>
-          <button type="button" className={primaryClass} disabled={!canAppend} onClick={() => save("append")}>
+          <button type="button" className={primaryClass} disabled={!canSave || !canAppend} onClick={() => save("append")}>
             뒤에 추가
           </button>
-          <button type="button" className={buttonClass} onClick={() => save("replace")}>
+          <button type="button" className={buttonClass} disabled={!canSave} onClick={() => save("replace")}>
             바꾸기
           </button>
           <button type="button" className={buttonClass} onClick={() => setPhase({ ...phase, choosing: false })}>
@@ -299,7 +307,7 @@ export default function StepProposal({ task, today, dDay, actions, onEditTask }:
           <button
             type="button"
             className={primaryClass}
-            disabled={rows.length === 0 || hasError}
+            disabled={!canSave}
             onClick={() =>
               task.steps.length === 0 ? save("replace") : setPhase({ ...phase, choosing: true })
             }

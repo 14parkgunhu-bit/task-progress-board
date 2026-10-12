@@ -11,18 +11,17 @@ import { checkAccessCode, consumeRateLimit } from "@/lib/server/guard.ts";
 import { errorResponse, isAcceptableToday, okResponse, readJson } from "@/lib/server/http.ts";
 import { buildSummaryPrompt } from "@/lib/server/prompts.ts";
 import { buildBasicSummary, summaryFacts, viewsFromCounts, type SummaryTaskInput } from "@/lib/summary.ts";
-import { countChars } from "@/lib/validate-input.ts";
+import { isSingleLineName } from "@/lib/validate-input.ts";
 
 export const maxDuration = 40;
 
-/** 업무 한 건 검사: 업무명 1~50자, 마감일, 0 ≤ done ≤ total ≤ 50 (정수) */
+/** 업무 한 건 검사: 업무명 1~50자·줄바꿈 없음, 마감일, 0 ≤ done ≤ total ≤ 50 (정수) */
 function parseTask(value: unknown): SummaryTaskInput | null {
   if (typeof value !== "object" || value === null) return null;
   const item = value as Record<string, unknown>;
-  if (typeof item.title !== "string") return null;
+  // 줄바꿈이 든 업무명은 요약 한 줄을 여러 줄로 쪼개 "5줄 이내" 규칙을 깨므로 받지 않는다
+  if (!isSingleLineName(item.title, MAX_TASK_TITLE_LENGTH)) return null;
   const title = item.title.trim();
-  const length = countChars(title);
-  if (length === 0 || length > MAX_TASK_TITLE_LENGTH) return null;
   if (!isValidDateString(item.dueDate)) return null;
   const { total, done } = item;
   if (typeof total !== "number" || typeof done !== "number") return null;

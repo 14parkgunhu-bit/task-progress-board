@@ -3,12 +3,14 @@
 // - ok: steps 3~7개, title 30자 이내·"하기"로 끝남·중복 없음, dueDate 필수·오늘~업무 마감일(둘 다 포함)
 // - need_more_info: question이 비어 있지 않음
 import { diffDays, isValidDateString } from "./dates.ts";
-import { AI_STEPS_MAX, AI_STEPS_MIN, MAX_STEP_TITLE_LENGTH } from "./limits.ts";
+import {
+  AI_QUESTION_MAX_LENGTH,
+  AI_STEPS_MAX,
+  AI_STEPS_MIN,
+  MAX_STEP_TITLE_LENGTH,
+} from "./limits.ts";
 import type { DateString } from "./types.ts";
-import { countChars } from "./validate-input.ts";
-
-/** 추가 입력 요청 질문의 최대 글자 수 (화면이 지나치게 길어지지 않게) */
-const MAX_QUESTION_LENGTH = 200;
+import { countChars, isSingleLineName } from "./validate-input.ts";
 
 export type ProposedStep = { title: string; dueDate: DateString };
 
@@ -37,7 +39,7 @@ export function parseStepsResponse(
   if (data.status === "need_more_info") {
     if (typeof data.question !== "string") return null;
     const question = data.question.trim();
-    if (question === "" || countChars(question) > MAX_QUESTION_LENGTH) return null;
+    if (question === "" || countChars(question) > AI_QUESTION_MAX_LENGTH) return null;
     return { status: "need_more_info", question };
   }
 
@@ -47,10 +49,10 @@ export function parseStepsResponse(
   const steps: ProposedStep[] = [];
   const seen = new Set<string>();
   for (const item of data.steps) {
-    if (!isRecord(item) || typeof item.title !== "string") return null;
+    // 줄바꿈이 든 제목은 저장 데이터 검사에서 거절되므로 여기서도 받지 않는다
+    if (!isRecord(item) || !isSingleLineName(item.title, MAX_STEP_TITLE_LENGTH)) return null;
     const title = item.title.trim();
-    const length = countChars(title);
-    if (length === 0 || length > MAX_STEP_TITLE_LENGTH || !title.endsWith("하기")) return null;
+    if (!title.endsWith("하기")) return null;
     if (seen.has(title)) return null;
     seen.add(title);
     if (!isValidDateString(item.dueDate)) return null; // 빠져 있거나 형식이 틀리면 실패

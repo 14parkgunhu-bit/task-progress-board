@@ -1,5 +1,5 @@
 // Design Ref: §2.2·§9 — 브라우저 전용: localStorage 읽기·쓰기
-// 서버·테스트에서 import하지 않는다. 저장소를 쓸 수 없어도 앱이 깨지지 않게 모든 접근을 try/catch로 감싼다.
+// 서버에서는 import하지 않는다. 테스트는 가상 저장소로만 점검한다. 저장소를 쓸 수 없어도 앱이 깨지지 않게 모든 접근을 try/catch로 감싼다.
 import { createEmptyBoard, parseBoardData } from "../board.ts";
 import type { BoardData } from "../types.ts";
 

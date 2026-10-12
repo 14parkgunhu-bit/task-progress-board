@@ -13,6 +13,14 @@ test("올바른 저장 데이터는 그대로 불러온다", () => {
   assert.deepEqual(parseBoardData(JSON.parse(JSON.stringify(board))), board);
 });
 
+test("이전 연도 마감일이 있는 저장 업무는 날짜·할 일을 바꾸지 않고 불러온다", () => {
+  const board = { schemaVersion: 1, revision: 3, tasks: [makeTask("과거 가상 업무", "2025-12-31", 1, 2)] };
+  board.tasks[0].steps[0].dueDate = "2025-12-01";
+  const original = JSON.parse(JSON.stringify(board));
+  assert.deepEqual(parseBoardData(JSON.parse(JSON.stringify(board))), original);
+  assert.deepEqual(board, original);
+});
+
 test("형태가 어긋난 저장 데이터는 거절한다", () => {
   const good = makeTask("t", "2026-10-20", 0, 1);
   assert.equal(parseBoardData(null), null);

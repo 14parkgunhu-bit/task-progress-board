@@ -65,6 +65,8 @@
 | [PLAN.md](PLAN.md) | 실행 계획 — 작업 순서와 성공 기준 |
 | [DESIGN.md](DESIGN.md) | 설계 — 화면·데이터 흐름·API·오류 처리·보안 |
 | [CHECK.md](CHECK.md) | 점검 결과 — 통과/실패와 남은 보완 항목 |
+| [HANDOFF.md](HANDOFF.md) | Codex 인계 — 독립 검증·오류 보완·남은 점검·발전 제안 |
+| [UX_UPDATES.md](UX_UPDATES.md) | 등록 안내·필터·백업 복원 — 최종 검증과 실제 UI 검사 한계 |
 | [CLAUDE.md](CLAUDE.md) | AI 도우미(Claude)와 일할 때의 프로젝트 규칙 |
 
 ## 배포 (Vercel)

@@ -85,3 +85,9 @@ export function countByStatus(views: readonly TaskView[]): Record<TaskStatus, nu
   for (const view of views) counts[view.status] += 1;
   return counts;
 }
+
+/** 업무 목록에만 적용하는 상태 필터. 상태·날짜 계산은 기존 TaskView를 그대로 쓴다. */
+export type BoardFilter = "all" | "dueSoon" | "overdue";
+export function filterViews(views: readonly TaskView[], filter: BoardFilter): readonly TaskView[] {
+  return filter === "all" ? views : views.filter(view => view.status === filter);
+}

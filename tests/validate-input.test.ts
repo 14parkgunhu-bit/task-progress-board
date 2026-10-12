@@ -22,6 +22,17 @@ test("업무 입력: 업무명 1~50자, 마감일 필수, 메모 1,000자", () =
   assert.equal(validateTaskInput({ title: "업무", dueDate: "2026-10-20", memo: "가".repeat(1000) }).ok, true);
 });
 
+test("마감일 입력은 2026년부터 허용하고 이전 연도·잘못된 날짜는 거절한다", () => {
+  const input = (dueDate: string) => validateTaskInput({ title: "가상 업무", dueDate, memo: "" });
+  for (const dueDate of ["2024-12-31", "2025-12-31"]) {
+    assert.equal(input(dueDate).ok, false);
+    assert.match(input(dueDate).errors.dueDate ?? "", /2026/);
+  }
+  for (const dueDate of ["2026-01-01", "2026-12-31", "2027-01-01"]) assert.equal(input(dueDate).ok, true);
+  assert.equal(input(" 2026-01-01 ").value.dueDate, "2026-01-01");
+  assert.equal(input("2026-02-30").ok, false);
+});
+
 test("업무 입력은 앞뒤 공백을 지운 값을 돌려준다", () => {
   assert.equal(validateTaskInput({ title: "  업무  ", dueDate: "2026-10-20", memo: " 메모 " }).value.title, "업무");
 });
